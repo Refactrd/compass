@@ -1,0 +1,224 @@
+@import "tailwindcss";
+
+/*
+ * Compass design tokens — CLAUDE.md, "Design system".
+ *
+ * The palette family (ink / warm off-white / brass / slate) and the typeface
+ * pairing are fixed. Everything below is a shade refinement within that family,
+ * which the design system explicitly allows for contrast reasons.
+ *
+ * Two themes. Dark is not a colour inversion. It uses the warm, low-contrast
+ * greys of Claude's dark theme rather than a near-black, because a paper-like
+ * product should read as dim paper at night, not as a terminal. Brass is kept
+ * as the accent: Compass is a Refactrd product, so the neutrals are borrowed
+ * and the brand colour is not.
+ *
+ * Utilities resolve through `@theme inline`, so `bg-canvas` follows whichever
+ * theme is active at runtime rather than being baked in at build time.
+ */
+@theme inline {
+  --color-ink: var(--c-ink);
+  --color-ink-muted: var(--c-ink-muted);
+
+  --color-canvas: var(--c-canvas);
+  --color-surface: var(--c-surface);
+  --color-surface-sunken: var(--c-surface-sunken);
+
+  --color-slate: var(--c-slate);
+  --color-slate-light: var(--c-slate-light);
+  --color-border: var(--c-border);
+  --color-border-strong: var(--c-border-strong);
+
+  --color-brass: var(--c-brass);
+  --color-brass-strong: var(--c-brass-strong);
+  --color-brass-tint: var(--c-brass-tint);
+
+  --color-danger: var(--c-danger);
+  --color-danger-tint: var(--c-danger-tint);
+
+  --font-display: var(--font-plus-jakarta), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-ibm-plex-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* Restrained radii and shallow shadows. The reference screenshots run from
+     pill-shaped and glassy to flat and dense; CLAUDE.md resolves that toward
+     "serious professional tool", so edges read as edges, not floating cards. */
+  --radius-sm: 0.25rem;
+  --radius-md: 0.375rem;
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.75rem;
+  --radius-2xl: 1rem;
+
+  --shadow-subtle: 0 1px 2px var(--c-shadow-a);
+  --shadow-raised: 0 1px 3px var(--c-shadow-a), 0 4px 12px var(--c-shadow-b);
+}
+
+/* Light ------------------------------------------------------------------- */
+:root {
+  color-scheme: light;
+
+  --c-ink: #1c1c1e;
+  --c-ink-muted: #45464a;
+
+  --c-canvas: #faf9f6;
+  --c-surface: #ffffff;
+  --c-surface-sunken: #f4f2ed;
+
+  --c-slate: #6e7076;
+  --c-slate-light: #9b9ba1;
+  --c-border: #e4e1da;
+  --c-border-strong: #cfcbc1;
+
+  --c-brass: #b08d57;
+  /* #B08D57 on the light ground is about 2.6:1 — fine as a fill or border,
+     unreadable as body text. This is the step used whenever brass carries text. */
+  --c-brass-strong: #8a6d3f;
+  --c-brass-tint: #f3ede2;
+
+  --c-danger: #a03d33;
+  --c-danger-tint: #f7ece9;
+
+  --c-shadow-a: rgb(28 28 30 / 0.05);
+  --c-shadow-b: rgb(28 28 30 / 0.04);
+
+  /* Logo files are black on transparent, so dark mode inverts rather than
+     swapping in the padded 500x500 white variant. */
+  --logo-filter: none;
+}
+
+/* Dark, explicitly chosen ------------------------------------------------- */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --c-ink: #f5f4ee;
+  --c-ink-muted: #c8c5ba;
+
+  --c-canvas: #262624;
+  --c-surface: #30302e;
+  --c-surface-sunken: #1f1e1d;
+
+  --c-slate: #9c9a92;
+  --c-slate-light: #706e67;
+  --c-border: #3b3a37;
+  --c-border-strong: #4c4b47;
+
+  --c-brass: #c9a46a;
+  --c-brass-strong: #dcbb84;
+  --c-brass-tint: #35302a;
+
+  --c-danger: #e5897b;
+  --c-danger-tint: #3a2724;
+
+  --c-shadow-a: rgb(0 0 0 / 0.32);
+  --c-shadow-b: rgb(0 0 0 / 0.24);
+
+  --logo-filter: invert(1);
+}
+
+/* Dark, following the operating system ------------------------------------ */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    --c-ink: #f5f4ee;
+    --c-ink-muted: #c8c5ba;
+
+    --c-canvas: #262624;
+    --c-surface: #30302e;
+    --c-surface-sunken: #1f1e1d;
+
+    --c-slate: #9c9a92;
+    --c-slate-light: #706e67;
+    --c-border: #3b3a37;
+    --c-border-strong: #4c4b47;
+
+    --c-brass: #c9a46a;
+    --c-brass-strong: #dcbb84;
+    --c-brass-tint: #35302a;
+
+    --c-danger: #e5897b;
+    --c-danger-tint: #3a2724;
+
+    --c-shadow-a: rgb(0 0 0 / 0.32);
+    --c-shadow-b: rgb(0 0 0 / 0.24);
+
+    --logo-filter: invert(1);
+  }
+}
+
+body {
+  background-color: var(--c-canvas);
+  color: var(--c-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-display);
+  letter-spacing: -0.015em;
+}
+
+.logo-adaptive {
+  filter: var(--logo-filter);
+}
+
+::selection {
+  background-color: var(--c-brass-tint);
+  color: var(--c-ink);
+}
+
+:focus-visible {
+  outline: 2px solid var(--c-brass-strong);
+  outline-offset: 2px;
+}
+
+/* Carousel crossfade. Kept in CSS rather than a library — three slides do not
+   justify a dependency on a 3-week build. */
+@keyframes compass-fade-in {
+  from {
+    opacity: 0;
+    transform: scale(1.03);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.slide-enter {
+  animation: compass-fade-in 900ms ease-out both;
+}
+
+@keyframes compass-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.toast-enter {
+  animation: compass-toast-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.compass-dialog {
+  margin: auto;
+}
+
+.compass-dialog[open] {
+  animation: compass-toast-in 180ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .slide-enter,
+  .toast-enter,
+  .compass-dialog[open] {
+    animation: none;
+  }
+}

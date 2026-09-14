@@ -106,6 +106,14 @@ export async function* streamAssistantTurn({
  * Normalises SDK failures into two cases the UI actually distinguishes: the
  * provider being unreachable or overloaded, which is worth a retry, and
  * everything else, which is not.
+ *
+ * The message on the returned AiError is what a consultant sees in a toast, so
+ * it is always a clean, fixed string — never the SDK's own error.message. The
+ * Anthropic SDK's message for an API error includes the raw response body
+ * (request id, nested JSON, sometimes the request payload shape), which is
+ * meant for a developer reading logs, not for someone using the product. The
+ * real detail is logged here instead, where it is still one line away when
+ * something needs diagnosing.
  */
 function toAiError(error: unknown): AiError {
   if (error instanceof Anthropic.APIError) {
@@ -119,15 +127,20 @@ function toAiError(error: unknown): AiError {
         "Compass could not reach the AI provider. Your message is saved; try again in a moment.",
       );
     }
-    return new AiError(`AI provider error ${error.status}: ${error.message}`);
+
+    console.error("[ai/client] non-retryable API error", error.status, error.message);
+    return new AiError(
+      "The AI provider rejected this request and retrying is unlikely to help. Contact your Compass administrator if this continues.",
+    );
   }
 
   if (error instanceof Error && error.name === "AbortError") {
     return new AiError("Request cancelled.");
   }
 
+  console.error("[ai/client] unexpected error", error);
   return new AiError(
-    error instanceof Error ? error.message : "Unknown AI provider error.",
+    "Something went wrong preparing that answer. Your message is saved.",
   );
 }
 

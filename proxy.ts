@@ -59,20 +59,31 @@ export async function proxy(request: NextRequest) {
     (route) => pathname === route || pathname.startsWith(`${route}/`),
   );
 
+  // A redirect Location header means nothing to a fetch() caller unless it
+  // explicitly asks for redirect: "manual" — the default is to follow it, so
+  // an API route hitting either branch below would silently receive the
+  // *target page's* 200 HTML back as if it were its own response, with no
+  // signal to act on. /api/messages already replicates both checks itself and
+  // returns proper JSON with a status code and a flag the client reads
+  // (accessRevoked, or a plain 401), so page-navigation UX belongs here and
+  // API auth belongs to the routes; this is what keeps that boundary real
+  // rather than the proxy quietly overriding it first.
+  const isApiRoute = pathname.startsWith("/api/");
+
   // Disabling an account bans it in Supabase Auth, which makes getUser fail
   // outright rather than return a user we could inspect. Without this branch
   // that is indistinguishable from being signed out, and the person gets a
   // login form they will try, fail, and be confused by. Supabase names this
   // case precisely, so route it to the screen that explains what happened.
   const banned = error?.code === "user_banned" || error?.status === 403;
-  if (banned && !isPublicRoute) {
+  if (banned && !isPublicRoute && !isApiRoute) {
     const revokedUrl = request.nextUrl.clone();
     revokedUrl.pathname = "/access-revoked";
     revokedUrl.search = "?reason=disabled";
     return NextResponse.redirect(revokedUrl);
   }
 
-  if (!user && !isPublicRoute) {
+  if (!user && !isPublicRoute && !isApiRoute) {
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = "/login";
     loginUrl.searchParams.set("next", pathname);

@@ -34,20 +34,41 @@ export async function POST(request: NextRequest) {
 
   const {
     data: { user },
+    error: userError,
   } = await supabase.auth.getUser();
+
+  // Disabling an account bans it at the auth layer (see proxy.ts), which makes
+  // getUser fail outright rather than return a user with a disabled profile.
+  // That happens before the status check below ever runs, so without this the
+  // 403 branch a few lines down is unreachable for the real disable flow — a
+  // banned session would fall through to the generic 401 instead, and the
+  // client has no accessRevoked flag to redirect on. Same detection as the
+  // proxy, applied here because a fetch from an already-open tab does not go
+  // through the proxy's own redirect.
+  if (userError?.code === "user_banned" || userError?.status === 403) {
+    return NextResponse.json(
+      { error: "Access revoked.", accessRevoked: true },
+      { status: 403 },
+    );
+  }
+
   if (!user) {
     return NextResponse.json({ error: "Not signed in." }, { status: 401 });
   }
 
-  // Status is read per request, so an account disabled mid-conversation cannot
-  // send another message on an existing session.
+  // Status is read per request too, as a second layer: this catches a
+  // disabled-but-not-yet-banned window and any status-only disable path that
+  // does not flip the auth ban.
   const { data: profile } = await supabase
     .from("users")
     .select("status")
     .eq("id", user.id)
     .single();
   if (!profile || profile.status !== "active") {
-    return NextResponse.json({ error: "Access revoked." }, { status: 403 });
+    return NextResponse.json(
+      { error: "Access revoked.", accessRevoked: true },
+      { status: 403 },
+    );
   }
 
   const usageBeforeTurn = await getUsage(supabase, user.id);

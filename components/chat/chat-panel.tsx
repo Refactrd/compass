@@ -108,15 +108,31 @@ export function ChatPanel({
     let createdId: string | null = null;
 
     try {
+      // activeConversationId, not the conversationId prop: the prop is fixed
+      // for a "new conversation" page load, but the server assigns a real id
+      // on the first attempt and sends it back as a "conversation" event
+      // regardless of whether that attempt then succeeds or fails. Using the
+      // prop here meant every retry after a failed first attempt created a
+      // second, separate, orphaned conversation instead of continuing the one
+      // that already existed.
       const response = await fetch("/api/messages", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ conversationId, content: question }),
+        body: JSON.stringify({ conversationId: activeConversationId, content: question }),
         signal: controller.signal,
       });
 
       if (!response.ok || !response.body) {
         const detail = await response.json().catch(() => null);
+
+        // A disabled account left mid-conversation: retrying would just 403
+        // again forever, so this is a redirect, not a retryable failure. No
+        // toast first — one is about to land on a screen that explains it.
+        if (detail?.accessRevoked) {
+          router.push("/access-revoked?reason=disabled");
+          return;
+        }
+
         if (detail?.rateLimited) {
           setUsage((current) => ({
             ...current,

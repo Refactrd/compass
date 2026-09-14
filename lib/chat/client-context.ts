@@ -3,6 +3,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { extractClientContext } from "@/lib/ai/extraction";
+import { findClientMatch } from "@/lib/chat/client-matching";
 import type { Database } from "@/lib/types/database";
 
 export type ClientRecord = {
@@ -13,17 +14,34 @@ export type ClientRecord = {
   notes: string | null;
 };
 
+/** An organization named in conversation that looks like an existing client. */
+export type ClientLinkSuggestion = {
+  /** Fields extracted from this conversation, not yet saved anywhere. */
+  proposed: {
+    name: string;
+    industry: string | null;
+    size: string | null;
+    notes: string | null;
+  };
+  /** The existing record it resembles. */
+  existing: ClientRecord;
+  exact: boolean;
+};
+
+export type ContextSyncResult = {
+  client: ClientRecord | null;
+  suggestion: ClientLinkSuggestion | null;
+  followUps: string[];
+};
+
 /**
- * Runs extraction for a turn and persists the result.
+ * Runs extraction for a turn, then either updates the linked client, creates a
+ * new one, or raises a link suggestion for the consultant to confirm.
  *
- * Client records are shared across consultants by design, so this creates or
- * updates a row anyone can later read and edit. What it will not do is
- * repoint a conversation at a different client on its own: linking two
- * conversations to the same client is the confirm-before-link flow on day 5,
- * and silently merging is exactly what CLAUDE.md rules out.
- *
- * Returns the record the panel should show, or null when the conversation has
- * not yet established anything worth recording.
+ * The one thing it will never do is decide on its own that two conversations
+ * are about the same organization. CLAUDE.md rules out silent auto-merge, and
+ * a wrong merge is close to unrecoverable: two engagements' context becomes one
+ * record and nobody can tell which facts came from which.
  */
 export async function syncClientContext({
   supabase,
@@ -35,7 +53,7 @@ export async function syncClientContext({
   conversationId: string;
   userId: string;
   turns: { role: "user" | "assistant"; content: string }[];
-}): Promise<ClientRecord | null> {
+}): Promise<ContextSyncResult> {
   const { data: conversation } = await supabase
     .from("conversations")
     .select("client_id")
@@ -54,7 +72,7 @@ export async function syncClientContext({
     existing = data ?? null;
   }
 
-  const extracted = await extractClientContext({
+  const { client: extracted, followUps } = await extractClientContext({
     turns,
     existing: existing
       ? {
@@ -66,41 +84,118 @@ export async function syncClientContext({
       : null,
   });
 
-  if (!extracted) return existing;
-
-  // A record needs a name to be a client. Facts about an organization the
-  // consultant has not named yet are held until they name it, rather than
-  // creating a row called "a regional insurer" that nobody can find again.
-  if (!extracted.name) return existing;
-
-  if (existing) {
-    // The consultant's own edits are not overwritten wholesale: only fields
-    // extraction actually found are written back, so clearing a field by hand
-    // is not undone by the next turn re-filling it from stale transcript.
-    const patch: Database["compass"]["Tables"]["clients"]["Update"] = {};
-    if (extracted.name !== existing.name) patch.name = extracted.name;
-    if (extracted.industry && extracted.industry !== existing.industry) {
-      patch.industry = extracted.industry;
-    }
-    if (extracted.size && extracted.size !== existing.size) {
-      patch.size = extracted.size;
-    }
-    if (extracted.notes && extracted.notes !== existing.notes) {
-      patch.notes = extracted.notes;
-    }
-
-    if (Object.keys(patch).length === 0) return existing;
-
-    const { data: updated } = await supabase
-      .from("clients")
-      .update(patch)
-      .eq("id", existing.id)
-      .select("id, name, industry, size, notes")
-      .maybeSingle();
-
-    return updated ?? existing;
+  if (!extracted || !extracted.name) {
+    // Facts about an organization the consultant has not named yet are held
+    // rather than filed under "a regional insurer", which nobody can find again.
+    return { client: existing, suggestion: null, followUps };
   }
 
+  const named = { ...extracted, name: extracted.name };
+
+  if (existing) {
+    return {
+      client: await applyUpdates(supabase, existing, named),
+      suggestion: null,
+      followUps,
+    };
+  }
+
+  // Nothing linked yet, so this may be an organization Compass already knows.
+  const { data: candidates } = await supabase
+    .from("clients")
+    .select("id, name")
+    .limit(500);
+
+  const match = findClientMatch(named.name, candidates ?? []);
+
+  if (match) {
+    const { data: full } = await supabase
+      .from("clients")
+      .select("id, name, industry, size, notes")
+      .eq("id", match.candidate.id)
+      .maybeSingle();
+
+    if (full) {
+      // Persisted so the prompt survives a refresh. Without this the
+      // conversation stays unlinked with nothing left on screen to resolve it.
+      await supabase
+        .from("conversations")
+        .update({
+          pending_client_link: {
+            proposed: {
+              name: named.name,
+              industry: named.industry,
+              size: named.size,
+              notes: named.notes,
+            },
+            existingClientId: full.id,
+          },
+        })
+        .eq("id", conversationId);
+
+      return {
+        client: null,
+        suggestion: {
+          proposed: {
+            name: named.name,
+            industry: named.industry,
+            size: named.size,
+            notes: named.notes,
+          },
+          existing: full,
+          exact: match.exact,
+        },
+        followUps,
+      };
+    }
+  }
+
+  return {
+    client: await createAndLink(supabase, conversationId, userId, named),
+    suggestion: null,
+    followUps,
+  };
+}
+
+/**
+ * Writes back only the fields extraction actually found, so a value the
+ * consultant cleared by hand is not refilled from a stale transcript.
+ */
+async function applyUpdates(
+  supabase: SupabaseClient<Database, "compass">,
+  existing: ClientRecord,
+  extracted: { name: string; industry: string | null; size: string | null; notes: string | null },
+): Promise<ClientRecord> {
+  const patch: Database["compass"]["Tables"]["clients"]["Update"] = {};
+  if (extracted.name !== existing.name) patch.name = extracted.name;
+  if (extracted.industry && extracted.industry !== existing.industry) {
+    patch.industry = extracted.industry;
+  }
+  if (extracted.size && extracted.size !== existing.size) {
+    patch.size = extracted.size;
+  }
+  if (extracted.notes && extracted.notes !== existing.notes) {
+    patch.notes = extracted.notes;
+  }
+
+  if (Object.keys(patch).length === 0) return existing;
+
+  const { data } = await supabase
+    .from("clients")
+    .update(patch)
+    .eq("id", existing.id)
+    .select("id, name, industry, size, notes")
+    .maybeSingle();
+
+  return data ?? existing;
+}
+
+async function createAndLink(
+  supabase: SupabaseClient<Database, "compass">,
+  conversationId: string,
+  userId: string,
+  extracted: { name: string; industry: string | null; size: string | null; notes: string | null },
+): Promise<ClientRecord | null> {
   const { data: created, error } = await supabase
     .from("clients")
     .insert({

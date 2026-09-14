@@ -7,11 +7,16 @@ import { useEffect, useRef, useState } from "react";
 import { AssistantMarkdown } from "@/components/chat/assistant-markdown";
 import { ContextPanel } from "@/components/chat/context-panel";
 import { MessageSources } from "@/components/chat/message-sources";
+import { UsageCounter } from "@/components/chat/usage-counter";
 import { WorkspaceHome } from "@/components/chat/workspace-home";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { decodeEvents } from "@/lib/chat/stream-protocol";
-import type { ClientPanelRecord } from "@/lib/chat/stream-protocol";
+import type {
+  ClientLinkSuggestion,
+  ClientPanelRecord,
+  UsageSnapshot,
+} from "@/lib/chat/stream-protocol";
 import { cn } from "@/lib/utils";
 
 export type ChatMessage = {
@@ -44,11 +49,15 @@ export function ChatPanel({
   initialMessages,
   email,
   initialClient,
+  initialSuggestion,
+  initialUsage,
 }: {
   conversationId: string | null;
   initialMessages: ChatMessage[];
   email: string;
   initialClient: ClientPanelRecord | null;
+  initialSuggestion: ClientLinkSuggestion | null;
+  initialUsage: UsageSnapshot;
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -61,6 +70,10 @@ export function ChatPanel({
   const [failed, setFailed] = useState<{ retryable: boolean } | null>(null);
   const [input, setInput] = useState("");
   const [client, setClient] = useState<ClientPanelRecord | null>(initialClient);
+  const [suggestion, setSuggestion] = useState<ClientLinkSuggestion | null>(initialSuggestion);
+  const [followUps, setFollowUps] = useState<string[]>([]);
+  const [activeConversationId, setActiveConversationId] = useState(conversationId);
+  const [usage, setUsage] = useState<UsageSnapshot>(initialUsage);
 
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -86,6 +99,7 @@ export function ChatPanel({
     setAnswer("");
     setStage(null);
     setSources(null);
+    setFollowUps([]);
     setFailed(null);
 
     const controller = new AbortController();
@@ -103,6 +117,14 @@ export function ChatPanel({
 
       if (!response.ok || !response.body) {
         const detail = await response.json().catch(() => null);
+        if (detail?.rateLimited) {
+          setUsage((current) => ({
+            ...current,
+            count: current.limit,
+            remaining: 0,
+            resetAt: detail.resetAt ?? current.resetAt,
+          }));
+        }
         throw new Error(detail?.error ?? "Compass could not send that message.");
       }
 
@@ -121,7 +143,10 @@ export function ChatPanel({
         buffer = rest;
 
         for (const event of events) {
-          if (event.type === "conversation") createdId = event.id;
+          if (event.type === "conversation") {
+            createdId = event.id;
+            setActiveConversationId(event.id);
+          }
           if (event.type === "stage") setStage(event.stage);
           if (event.type === "sources") {
             sourcesRef.current = event.titles;
@@ -132,6 +157,9 @@ export function ChatPanel({
             setAnswer(streamed);
           }
           if (event.type === "client") setClient(event.client);
+          if (event.type === "suggestion") setSuggestion(event.suggestion);
+          if (event.type === "followUps") setFollowUps(event.questions);
+          if (event.type === "usage") setUsage(event.usage);
           if (event.type === "done") savedId = event.messageId;
           if (event.type === "error") {
             setFailed({ retryable: event.retryable });
@@ -179,10 +207,12 @@ export function ChatPanel({
     }
   }
 
+  const atLimit = usage.remaining <= 0;
+
   function onSubmit(event: React.FormEvent) {
     event.preventDefault();
     const question = input.trim();
-    if (!question || streaming) return;
+    if (!question || streaming || atLimit) return;
     setInput("");
     void send(question);
   }
@@ -256,6 +286,24 @@ export function ChatPanel({
       </div>
 
       <div className="border-t border-border bg-canvas">
+        {followUps.length > 0 && !streaming ? (
+          <div className="mx-auto flex w-full max-w-3xl flex-wrap gap-2 px-6 pt-3">
+            {followUps.map((question) => (
+              <button
+                key={question}
+                type="button"
+                onClick={() => {
+                  setFollowUps([]);
+                  void send(question);
+                }}
+                className="rounded-full border border-border bg-surface px-3 py-1.5 text-xs text-ink-muted transition-colors hover:border-brass/40 hover:bg-brass-tint hover:text-ink"
+              >
+                {question}
+              </button>
+            ))}
+          </div>
+        ) : null}
+
         <form
           onSubmit={onSubmit}
           className="mx-auto w-full max-w-3xl px-6 py-4"
@@ -271,10 +319,15 @@ export function ChatPanel({
                   onSubmit(event);
                 }
               }}
+              disabled={atLimit}
               rows={1}
-              placeholder="Describe the client situation, at whatever level of detail you have."
+              placeholder={
+                atLimit
+                  ? "Daily limit reached. Come back after the reset."
+                  : "Describe the client situation, at whatever level of detail you have."
+              }
               aria-label="Message"
-              className="max-h-48 min-h-10 flex-1 resize-none bg-transparent px-2 py-2 text-sm text-ink placeholder:text-slate-light focus:outline-none"
+              className="max-h-48 min-h-10 flex-1 resize-none bg-transparent px-2 py-2 text-sm text-ink placeholder:text-slate-light focus:outline-none disabled:cursor-not-allowed disabled:text-slate-light"
             />
             {streaming ? (
               <Button
@@ -290,17 +343,24 @@ export function ChatPanel({
               <Button
                 type="submit"
                 className="px-2.5 py-2"
-                disabled={!input.trim()}
+                disabled={!input.trim() || atLimit}
                 aria-label="Send"
               >
                 <ArrowUp className="h-4 w-4" aria-hidden="true" />
               </Button>
             )}
           </div>
-          <p className="mt-2 text-center text-xs text-slate-light">
-            Compass follows Refactrd&rsquo;s reasoning chain. It will ask before
-            it recommends.
-          </p>
+          <UsageCounter
+            count={usage.count}
+            limit={usage.limit}
+            resetAt={usage.resetAt}
+          />
+          {!atLimit ? (
+            <p className="mt-1 text-center text-xs text-slate-light">
+              Compass follows Refactrd&rsquo;s reasoning chain. It will ask
+              before it recommends.
+            </p>
+          ) : null}
         </form>
       </div>
       </div>
@@ -309,7 +369,18 @@ export function ChatPanel({
           rather than stacked: on a narrow screen the conversation is the thing
           that matters, and the panel is a correction surface. */}
       <aside className="hidden w-72 shrink-0 border-l border-border xl:block">
-        <ContextPanel client={client} onClientChange={setClient} />
+        <ContextPanel
+          client={client}
+          suggestion={suggestion}
+          conversationId={activeConversationId}
+          onClientChange={(next) => {
+            setClient(next);
+            // Resolving the suggestion is what dismisses it. There is no
+            // "remind me later" state to persist, because either answer links
+            // the conversation to a client and the question stops being open.
+            setSuggestion(null);
+          }}
+        />
       </aside>
     </div>
   );

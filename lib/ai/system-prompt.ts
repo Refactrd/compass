@@ -71,6 +71,11 @@ further things you could do.
 
 No emojis.
 
+No em dashes and no en dashes, anywhere. Where you would reach for one, use a
+comma, a colon, a full stop, or rewrite the sentence. This is a house style
+rule, not a stylistic suggestion, and it applies to tables and lists as well as
+to prose. Ordinary hyphens in compound words are fine.
+
 Write in the consultant's units. Hours returned, cases cleared, days of cycle
 time removed. A percentage with no denominator is decoration.
 `.trim();

@@ -4,7 +4,9 @@ import { AiUnavailableError, streamAssistantTurn } from "@/lib/ai/client";
 import { retrieve } from "@/lib/ai/retrieval";
 import { syncClientContext } from "@/lib/chat/client-context";
 import { buildSystemPrompt } from "@/lib/ai/system-prompt";
+import { HouseStyleStream } from "@/lib/chat/house-style";
 import { encodeEvent, type ChatStreamEvent } from "@/lib/chat/stream-protocol";
+import { consumeUsage, getUsage } from "@/lib/rate-limit";
 import { createClient } from "@/lib/supabase/server";
 
 /**
@@ -14,8 +16,12 @@ import { createClient } from "@/lib/supabase/server";
  * so the row level security policies are the thing actually enforcing ownership
  * on the hot path, not just a backstop behind application checks.
  *
- * Not yet here, and deliberately: the daily rate limit check (week 3 day 1)
- * and client-context extraction (week 2 day 4).
+ * The 20/day cap is checked before any writes: over the limit produces a
+ * clean 429 with a reset time and touches nothing, which is what "no model
+ * call made" means in CLAUDE.md's request lifecycle. The count itself only
+ * moves on a successful turn (lib/rate-limit.ts's consumeUsage, called once
+ * the answer is saved) — a provider outage or a save failure does not cost
+ * the consultant part of their daily quota.
  */
 
 /** How much history to replay. Long-thread summarisation is out of MVP scope. */
@@ -42,6 +48,18 @@ export async function POST(request: NextRequest) {
     .single();
   if (!profile || profile.status !== "active") {
     return NextResponse.json({ error: "Access revoked." }, { status: 403 });
+  }
+
+  const usageBeforeTurn = await getUsage(supabase, user.id);
+  if (usageBeforeTurn.remaining <= 0) {
+    return NextResponse.json(
+      {
+        error: "Daily limit reached.",
+        rateLimited: true,
+        resetAt: usageBeforeTurn.resetAt,
+      },
+      { status: 429 },
+    );
   }
 
   let body: { conversationId?: string; content?: string };
@@ -171,18 +189,9 @@ export async function POST(request: NextRequest) {
           client: clientContext,
         });
 
-        // Kicked off now, awaited after the stream. Extraction reads the
-        // transcript, not the answer, so it does not need to wait for one, and
-        // running it in parallel keeps it off the answer's critical path.
-        const extraction = syncClientContext({
-          supabase,
-          conversationId,
-          userId: user.id,
-          turns,
-        });
-
         let answer = "";
         let announcedPreparing = false;
+        const houseStyle = new HouseStyleStream();
 
         for await (const event of streamAssistantTurn({
           system,
@@ -196,9 +205,20 @@ export async function POST(request: NextRequest) {
               announcedPreparing = true;
               send({ type: "stage", stage: "preparing" });
             }
-            answer += event.text;
-            send({ type: "text", text: event.text });
+            // Accumulated from the sanitised text, so what gets stored is
+            // exactly what was displayed.
+            const clean = houseStyle.push(event.text);
+            if (clean) {
+              answer += clean;
+              send({ type: "text", text: clean });
+            }
           }
+        }
+
+        const trailing = houseStyle.flush();
+        if (trailing) {
+          answer += trailing;
+          send({ type: "text", text: trailing });
         }
 
         if (!answer.trim()) {
@@ -239,6 +259,15 @@ export async function POST(request: NextRequest) {
           return;
         }
 
+        // Counted now that there is a saved answer to show for it. A provider
+        // failure or a save failure returns above this line, so neither costs
+        // part of the daily quota.
+        const usage = await consumeUsage(user.id).catch((error) => {
+          console.error("[messages] usage increment failed", error);
+          return null;
+        });
+        if (usage) send({ type: "usage", usage });
+
         // Bumps the conversation so the sidebar orders by real activity.
         // Messages live in their own table, so nothing else would move this.
         // The value is overwritten by the updated_at trigger; the point is to
@@ -248,14 +277,24 @@ export async function POST(request: NextRequest) {
           .update({ updated_at: new Date().toISOString() })
           .eq("id", conversationId);
 
-        // Awaited rather than fired and forgotten: on a serverless host the
-        // function can be torn down the moment the stream closes, which would
-        // cancel it mid-write.
-        const client = await extraction.catch((error) => {
+        // Runs after the answer rather than alongside it, because the
+        // follow-up suggestions need to see what was just said. The answer is
+        // already fully on screen by now, so this costs no perceived latency,
+        // and it is awaited rather than fired and forgotten: a serverless host
+        // can tear the function down the moment the stream closes.
+        const context = await syncClientContext({
+          supabase,
+          conversationId,
+          userId: user.id,
+          turns: [...turns, { role: "assistant" as const, content: answer }],
+        }).catch((error) => {
           console.error("[messages] client extraction failed", error);
-          return null;
+          return { client: null, suggestion: null, followUps: [] };
         });
-        send({ type: "client", client });
+
+        send({ type: "client", client: context.client });
+        send({ type: "suggestion", suggestion: context.suggestion });
+        send({ type: "followUps", questions: context.followUps });
 
         send({ type: "done", messageId: saved.id });
         controller.close();

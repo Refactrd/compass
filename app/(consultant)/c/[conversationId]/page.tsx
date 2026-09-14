@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 
 import { ChatPanel } from "@/components/chat/chat-panel";
 import { requireActiveMember } from "@/lib/auth/guards";
+import { getUsage } from "@/lib/rate-limit";
 import { createClient } from "@/lib/supabase/server";
 
 export default async function ConversationPage({
@@ -18,11 +19,29 @@ export default async function ConversationPage({
   // is the right answer: whether it exists is not their business either.
   const { data: conversation } = await supabase
     .from("conversations")
-    .select("id, title, client_id")
+    .select("id, title, client_id, pending_client_link")
     .eq("id", conversationId)
     .maybeSingle();
 
   if (!conversation) notFound();
+
+  const usage = await getUsage(supabase, profile.id);
+
+  // Rehydrated from the row so a refresh does not lose an unanswered
+  // confirm-before-link prompt.
+  const pending = conversation.pending_client_link;
+  const { data: pendingExisting } = pending
+    ? await supabase
+        .from("clients")
+        .select("id, name, industry, size, notes")
+        .eq("id", pending.existingClientId)
+        .maybeSingle()
+    : { data: null };
+
+  const suggestion =
+    pending && pendingExisting
+      ? { proposed: pending.proposed, existing: pendingExisting, exact: false }
+      : null;
 
   const { data: client } = conversation.client_id
     ? await supabase
@@ -92,6 +111,8 @@ export default async function ConversationPage({
       }))}
       email={profile.email}
       initialClient={client}
+      initialSuggestion={suggestion}
+      initialUsage={usage}
     />
   );
 }

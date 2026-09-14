@@ -14,6 +14,17 @@ export type UserStatus = "invited" | "active" | "disabled";
 export type MessageRole = "user" | "assistant";
 export type DocumentStatus = "active" | "deactivated";
 
+/** Shape of conversations.pending_client_link. */
+export type PendingClientLink = {
+  proposed: {
+    name: string;
+    industry: string | null;
+    size: string | null;
+    notes: string | null;
+  };
+  existingClientId: string;
+};
+
 export type Database = {
   compass: {
     Tables: {
@@ -77,6 +88,8 @@ export type Database = {
           title: string | null;
           created_at: string;
           updated_at: string;
+          /** Unresolved link suggestion; see migration 0004. */
+          pending_client_link: PendingClientLink | null;
         };
         Insert: {
           id?: string;
@@ -89,6 +102,7 @@ export type Database = {
           title?: string | null;
           /** Written to bump the row; the trigger overrides it with now(). */
           updated_at?: string;
+          pending_client_link?: PendingClientLink | null;
         };
         Relationships: [];
       };
@@ -179,6 +193,10 @@ export type Database = {
     };
     Views: { [_ in never]: never };
     Functions: {
+      increment_daily_usage: {
+        Args: { p_user_id: string };
+        Returns: number;
+      };
       match_document_chunks: {
         Args: {
           /** vector(1024), sent as its bracketed string form. */

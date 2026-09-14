@@ -1,6 +1,7 @@
 import "server-only";
 
 import { extractStructured } from "@/lib/ai/client";
+import { applyHouseStyle } from "@/lib/chat/house-style";
 
 /**
  * Client-context extraction.
@@ -22,8 +23,9 @@ import { extractStructured } from "@/lib/ai/client";
  */
 
 const EXTRACTION_SYSTEM = `
-You read a consulting conversation and pull out what is known about the client
-organization under discussion. You are populating a record, not writing prose.
+You read a consulting conversation and do two things: pull out what is known
+about the client organization, and suggest what the consultant might usefully
+ask next. You are populating a record, not writing prose.
 
 Rules:
 
@@ -37,6 +39,11 @@ than a guess. A field you are unsure about is a field that should stay null.
 The organization is the consultant's client, not Refactrd and not the
 consultant's own firm. If the conversation is about methodology in general, or
 about no particular organization, every field is null.
+
+Write every field without em dashes or en dashes. Use commas or full stops
+instead. Ordinary hyphens in compound words are fine. These fields are shown to
+the consultant in the context panel, so they follow the same house style as
+everything else.
 
 name: the organization's name as the consultant writes it. Null if they have
 only described it generically, such as "a regional insurer".
@@ -53,6 +60,13 @@ from the conversation only. No recommendations and no analysis of your own.
 You will be shown any existing record. Carry forward anything still true, revise
 what the conversation has corrected, and add what is new. Do not drop a field
 that was previously established just because this turn did not mention it.
+
+followUps: two or three questions the consultant might ask next, written in
+their voice, as they would type them. Each should move the reasoning chain
+forward from where the conversation actually is, not restate what was just
+covered. Under twelve words each. If the last answer asked the consultant a
+question, do not suggest asking it back. Return an empty array when nothing
+useful suggests itself; a weak suggestion is worse than none.
 `.trim();
 
 const SCHEMA = {
@@ -62,8 +76,12 @@ const SCHEMA = {
     industry: { type: ["string", "null"] },
     size: { type: ["string", "null"] },
     notes: { type: ["string", "null"] },
+    // No maxItems: the structured-output schema rejects it on arrays. The cap
+    // is applied in normalizeFollowUps instead, where the prompt's "two or
+    // three" is the real constraint anyway.
+    followUps: { type: "array", items: { type: "string" } },
   },
-  required: ["name", "industry", "size", "notes"],
+  required: ["name", "industry", "size", "notes", "followUps"],
   additionalProperties: false,
 } as const;
 
@@ -76,6 +94,11 @@ export type ExtractedClient = {
 
 export type ExistingClient = ExtractedClient;
 
+export type ExtractionResult = {
+  client: ExtractedClient | null;
+  followUps: string[];
+};
+
 /** How much of the thread to read. The last few turns carry the client facts. */
 const TRANSCRIPT_TURNS = 8;
 
@@ -85,9 +108,9 @@ export async function extractClientContext({
 }: {
   turns: { role: "user" | "assistant"; content: string }[];
   existing: ExistingClient | null;
-}): Promise<ExtractedClient | null> {
+}): Promise<ExtractionResult> {
   const recent = turns.slice(-TRANSCRIPT_TURNS);
-  if (recent.length === 0) return null;
+  if (recent.length === 0) return { client: null, followUps: [] };
 
   const transcript = recent
     .map(
@@ -107,13 +130,35 @@ export async function extractClientContext({
       prompt: `${existingBlock}\n\nConversation so far:\n\n${transcript}`,
     });
 
-    const parsed = JSON.parse(raw) as ExtractedClient;
-    return normalize(parsed);
-  } catch {
+    const parsed = JSON.parse(raw) as ExtractedClient & {
+      followUps?: unknown;
+    };
+
+    return {
+      client: normalize(parsed),
+      followUps: normalizeFollowUps(parsed.followUps),
+    };
+  } catch (error) {
     // Extraction is a side effect of the turn, never the point of it. A failure
-    // here must not surface as a broken answer; the panel simply does not move.
-    return null;
+    // here must not surface as a broken answer; the panel simply does not move
+    // and no chips appear.
+    //
+    // Logged rather than swallowed. A silent catch here hid a rejected schema
+    // for a full test cycle: the panel looked merely empty, which is also what
+    // a conversation with no client in it looks like.
+    console.error("[extraction] failed", error);
+    return { client: null, followUps: [] };
   }
+}
+
+/** Trims, drops anything empty or absurdly long, and caps the count. */
+function normalizeFollowUps(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => applyHouseStyle(item.trim().replace(/\s+/g, " ")))
+    .filter((item) => item.length > 0 && item.length <= 120)
+    .slice(0, 3);
 }
 
 /** Trims, collapses whitespace, and treats blank or evasive values as null. */
@@ -127,7 +172,8 @@ function normalize(value: ExtractedClient): ExtractedClient | null {
     if (/^(unknown|not (specified|stated|mentioned|given)|n\/?a|none)$/i.test(trimmed)) {
       return null;
     }
-    return trimmed.slice(0, 2000);
+    // Backstop for the prompt rule, same as the answer stream.
+    return applyHouseStyle(trimmed).slice(0, 2000);
   };
 
   const result: ExtractedClient = {

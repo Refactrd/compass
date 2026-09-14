@@ -4,9 +4,13 @@ import { Building2, PanelRightClose, Pencil } from "lucide-react";
 import { useState, useTransition } from "react";
 
 import { updateClientField } from "@/app/(consultant)/client-actions";
+import { LinkSuggestion } from "@/components/chat/link-suggestion";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
-import type { ClientPanelRecord } from "@/lib/chat/stream-protocol";
+import type {
+  ClientLinkSuggestion,
+  ClientPanelRecord,
+} from "@/lib/chat/stream-protocol";
 import { cn } from "@/lib/utils";
 
 type Field = "name" | "industry" | "size" | "notes";
@@ -37,10 +41,14 @@ const FIELDS: { key: Field; label: string; placeholder: string; multiline?: bool
  */
 export function ContextPanel({
   client,
+  suggestion,
+  conversationId,
   onClientChange,
   onClose,
 }: {
   client: ClientPanelRecord | null;
+  suggestion: ClientLinkSuggestion | null;
+  conversationId: string | null;
   /** Lifts a saved edit back to the owner of the record. */
   onClientChange: (client: ClientPanelRecord) => void;
   onClose?: () => void;
@@ -64,12 +72,22 @@ export function ContextPanel({
         ) : null}
       </div>
 
-      {!client ? (
+      {suggestion && conversationId ? (
+        <LinkSuggestion
+          conversationId={conversationId}
+          suggestion={suggestion}
+          onResolved={onClientChange}
+        />
+      ) : null}
+
+      {!client && !suggestion ? (
         <p className="px-4 pb-4 text-xs leading-relaxed text-slate">
           Nothing recorded yet. Describe the organization in the conversation and
           Compass fills this in. You can correct anything it gets wrong.
         </p>
-      ) : (
+      ) : null}
+
+      {client ? (
         <div className="flex flex-col gap-4 overflow-y-auto px-4 pb-4">
           {FIELDS.map((field) => (
             <EditableField
@@ -84,7 +102,7 @@ export function ContextPanel({
             />
           ))}
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

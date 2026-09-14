@@ -355,7 +355,7 @@ checks (sort_key, check_name, ok, detail) as (
         values
           ('users','id,email,role,status,created_at,invited_by'),
           ('clients','id,name,industry,size,notes,created_by,created_at,updated_at'),
-          ('conversations','id,user_id,client_id,title,created_at,updated_at'),
+          ('conversations','id,user_id,client_id,title,created_at,updated_at,pending_client_link'),
           ('messages','id,conversation_id,role,content,source_chunk_ids,created_at'),
           ('documents','id,title,storage_path,uploaded_by,status,uploaded_at'),
           ('document_chunks','id,document_id,content,embedding,chunk_index,created_at'),
@@ -376,7 +376,7 @@ checks (sort_key, check_name, ok, detail) as (
         values
           ('users','id,email,role,status,created_at,invited_by'),
           ('clients','id,name,industry,size,notes,created_by,created_at,updated_at'),
-          ('conversations','id,user_id,client_id,title,created_at,updated_at'),
+          ('conversations','id,user_id,client_id,title,created_at,updated_at,pending_client_link'),
           ('messages','id,conversation_id,role,content,source_chunk_ids,created_at'),
           ('documents','id,title,storage_path,uploaded_by,status,uploaded_at'),
           ('document_chunks','id,document_id,content,embedding,chunk_index,created_at'),
@@ -400,6 +400,37 @@ checks (sort_key, check_name, ok, detail) as (
     'found ' || (select count(*) from pg_policies
       where schemaname = 'storage' and tablename = 'objects'
         and policyname like 'compass_documents_%') || ' of 3'
+
+  -- Rate limiting -------------------------------------------------------------
+  -- The 20/day cap has no meaningful client-side enforcement if this function
+  -- is missing, misconfigured as SECURITY INVOKER (which would let it run
+  -- under the caller's own, more restricted grants rather than bypass RLS to
+  -- write usage_events), or callable by `authenticated`.
+  union all
+  select 25, 'increment_daily_usage exists and is security definer',
+    exists (
+      select 1 from pg_proc p
+      join pg_namespace n on n.oid = p.pronamespace
+      where n.nspname = 'compass'
+        and p.proname = 'increment_daily_usage'
+        and p.prosecdef
+    ),
+    coalesce((
+      select case when p.prosecdef then 'definer' else 'INVOKER (wrong)' end
+      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+      where n.nspname = 'compass' and p.proname = 'increment_daily_usage'
+    ), 'function missing')
+
+  union all
+  select 26, 'increment_daily_usage is callable only by service_role',
+    (
+      has_function_privilege('service_role', 'compass.increment_daily_usage(uuid)', 'execute')
+      and not has_function_privilege('authenticated', 'compass.increment_daily_usage(uuid)', 'execute')
+      and not has_function_privilege('anon', 'compass.increment_daily_usage(uuid)', 'execute')
+    ),
+    'service_role=' || has_function_privilege('service_role', 'compass.increment_daily_usage(uuid)', 'execute')::text
+      || ', authenticated=' || has_function_privilege('authenticated', 'compass.increment_daily_usage(uuid)', 'execute')::text
+      || ', anon=' || has_function_privilege('anon', 'compass.increment_daily_usage(uuid)', 'execute')::text
 )
 
 select

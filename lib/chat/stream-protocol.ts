@@ -14,6 +14,24 @@ export type ClientPanelRecord = {
   notes: string | null;
 };
 
+export type UsageSnapshot = {
+  count: number;
+  limit: number;
+  remaining: number;
+  resetAt: string;
+};
+
+export type ClientLinkSuggestion = {
+  proposed: {
+    name: string;
+    industry: string | null;
+    size: string | null;
+    notes: string | null;
+  };
+  existing: ClientPanelRecord;
+  exact: boolean;
+};
+
 export type ChatStreamEvent =
   /** Sent first when the turn created a conversation, so the client can route. */
   | { type: "conversation"; id: string; title: string }
@@ -24,6 +42,12 @@ export type ChatStreamEvent =
   | { type: "text"; text: string }
   /** Client record after this turn's extraction. Null means nothing recorded. */
   | { type: "client"; client: ClientPanelRecord | null }
+  /** An organization that resembles an existing client, awaiting confirmation. */
+  | { type: "suggestion"; suggestion: ClientLinkSuggestion | null }
+  /** Clickable next questions. Empty when nothing useful suggested itself. */
+  | { type: "followUps"; questions: string[] }
+  /** Usage after this turn was counted. Drives the composer's live counter. */
+  | { type: "usage"; usage: UsageSnapshot }
   | { type: "done"; messageId: string }
   /** `retryable` distinguishes a provider outage from a permanent failure. */
   | { type: "error"; message: string; retryable: boolean };

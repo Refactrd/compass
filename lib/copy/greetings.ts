@@ -29,7 +29,7 @@ const BANDS: Band[] = [
     greetings: [
       { headline: "Coffee time with Compass", note: "Let us start with what you know." },
       { headline: "Good morning", note: "Where is the real bottleneck today?" },
-      { headline: "Morning, then", note: "Bring the messy version of the problem." },
+      { headline: "Morning", note: "Bring the messy version of the problem." },
     ],
   },
   {

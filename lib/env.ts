@@ -31,3 +31,18 @@ export const supabaseServiceRoleKey = () =>
 
 export const siteUrl = () =>
   process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
+
+/** Server-side only — never call this from a client component. */
+export const resendApiKey = () =>
+  required("RESEND_API_KEY", process.env.RESEND_API_KEY);
+
+export const resendFromAddress = () =>
+  required("RESEND_FROM_EMAIL", process.env.RESEND_FROM_EMAIL);
+
+/**
+ * Verifies that a Send Email Hook request actually came from Supabase Auth.
+ * Server-side only. Set when the hook is enabled in Supabase Dashboard ->
+ * Authentication -> Hooks; Supabase generates this value, it isn't chosen.
+ */
+export const sendEmailHookSecret = () =>
+  required("SEND_EMAIL_HOOK_SECRET", process.env.SEND_EMAIL_HOOK_SECRET);

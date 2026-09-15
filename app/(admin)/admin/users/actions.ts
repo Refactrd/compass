@@ -72,9 +72,10 @@ export async function inviteConsultant(
 /**
  * Produces a usable sign-in link without sending an email.
  *
- * Supabase's built-in email is development grade and rate limited to a couple
- * of messages an hour, so an invitation that never arrives is common. This is
- * the manual way through until a dedicated provider is wired up.
+ * Email now goes through Resend (see README "Email"), so this is no longer
+ * the primary path, but it stays as the manual fallback for when Resend or
+ * DNS is misconfigured and an admin needs to hand someone a working link
+ * directly rather than wait on deliverability.
  */
 export async function createInviteLink(
   _prev: UserActionState,

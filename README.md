@@ -45,6 +45,13 @@ EMBEDDING_API_KEY=
 # --- App ------------------------------------------------------------------
 # Origin used to build invite and password-reset redirect links.
 NEXT_PUBLIC_SITE_URL=http://localhost:3000
+
+# --- Email (Resend) ---------------------------------------------------------
+# Supabase's built-in email is development grade and rate limited, so account
+# emails go through Resend instead via a Send Email Hook. See "Email" below.
+RESEND_API_KEY=
+RESEND_FROM_EMAIL=info@refactrd.com
+SEND_EMAIL_HOOK_SECRET=
 ```
 
 ### Database
@@ -112,6 +119,74 @@ The harness installs pgvector into `public` rather than `extensions` on purpose.
 That is how it sits on older Supabase projects, and it is the layout that broke
 the first real run of `0001`; keeping it that way means the migration stays
 proven against the awkward case, not just the convenient one.
+
+## Email
+
+Invites and password resets are sent by Resend, not Supabase's built-in
+email (development grade, rate limited to a couple of messages an hour,
+which is why `app/(admin)/admin/users/actions.ts` originally had a
+"copy link instead" fallback). The swap is a Supabase Auth **Send Email
+Hook**: Supabase stops sending mail itself and instead calls
+`app/api/auth/send-email/route.tsx` for every invite, password reset,
+magic link, or email change, passing the recipient and a one-time token.
+That route renders a branded React Email template
+(`components/email/*`, light and dark mode both handled by the
+`prefers-color-scheme` block and the `[data-ogsc]` Outlook.com override in
+`components/email/brand.tsx`) and sends it through `lib/email/resend.ts`.
+
+Two things only exist in Supabase's dashboard, not in this repo, the same
+way "Exposed Schemas" and the storage bucket's public flag do:
+
+1. **Resend**: add and verify the sending domain (Resend → Domains), which
+   means adding the SPF/DKIM records it gives you to that domain's DNS.
+   Nothing sends until the domain shows verified. `RESEND_FROM_EMAIL` must
+   be an address at that domain.
+2. **Supabase**: Authentication → Hooks → Send Email → HTTPS, pointing at
+   `${NEXT_PUBLIC_SITE_URL}/api/auth/send-email` (the production URL once
+   deployed). Enabling it hands Supabase a signing secret, formatted
+   `v1,whsec_...`; put that whole string in `SEND_EMAIL_HOOK_SECRET`. The
+   route verifies every request against it (`standardwebhooks`), so a
+   request that isn't actually from Supabase gets a 401, not a sent email.
+
+A failure inside the hook (bad signature, Resend rejects the send, the
+domain isn't verified) fails the underlying invite or reset itself, not
+just the email; Supabase treats the hook's response as authoritative. That
+is deliberate: an invite that reports success but never arrives is worse
+than one that visibly fails.
+
+To preview a template without sending anything, render it to a file and
+open it, or reuse the pattern in `lib/email/resend.ts` (`render()` from
+`@react-email/render` needs no network access).
+
+## Deploying
+
+Vercel, per the tech stack in `CLAUDE.md`. No `vercel.json` is needed, a
+plain Next.js app builds and deploys with Vercel's defaults.
+
+1. **Connect the repo** in the Vercel dashboard (New Project, import this
+   GitHub repo). Framework preset autodetects as Next.js.
+2. **Set every env var from the template above** in Vercel's Project
+   Settings -> Environment Variables, for Production (and Preview, if
+   preview deploys should also work end to end). `NEXT_PUBLIC_SITE_URL`
+   must be the real production URL, not `localhost`, since it is what
+   invite and reset links are built from.
+3. **Supabase -> Authentication -> URL Configuration**: add the production
+   URL to Site URL and to Redirect URLs (`https://<domain>/auth/confirm`
+   at minimum). A login or invite link built against a URL Supabase does
+   not recognize is rejected.
+4. **Supabase -> Authentication -> Hooks -> Send Email**: point it at
+   `https://<domain>/api/auth/send-email` (it can only target a live,
+   reachable URL, so this step comes after the first deploy, not before).
+   Re-verify the hook secret in Vercel's env vars matches what Supabase
+   shows after that update, it is reissued if the hook is re-saved.
+5. **Resend**: confirm the sending domain still shows verified. Do this
+   again here, not just once locally, DNS and domain verification are
+   account level and do not depend on where the app is hosted, but it is
+   the last thing that silently breaks invites if skipped.
+6. Run through the production readiness checklist in `CLAUDE.md` once
+   against the deployed URL, the local/dev-environment version of that
+   pass (Week 3, Day 4 here) does not substitute for checking it against
+   what people will actually use.
 
 ## Appearance
 

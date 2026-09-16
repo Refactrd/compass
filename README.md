@@ -52,6 +52,12 @@ NEXT_PUBLIC_SITE_URL=http://localhost:3000
 RESEND_API_KEY=
 RESEND_FROM_EMAIL=info@refactrd.com
 SEND_EMAIL_HOOK_SECRET=
+
+# --- Cron ---------------------------------------------------------------
+# Shared secret for the keep-alive cron job. Any random value works, Vercel
+# sends it back automatically as long as an env var of this exact name
+# exists. See "Keeping the database awake" below.
+CRON_SECRET=
 ```
 
 ### Database
@@ -187,6 +193,24 @@ plain Next.js app builds and deploys with Vercel's defaults.
    against the deployed URL, the local/dev-environment version of that
    pass (Week 3, Day 4 here) does not substitute for checking it against
    what people will actually use.
+
+## Keeping the database awake
+
+Supabase pauses a project on the free/hobby tier after 7 days with no
+database activity. `app/api/cron/keep-alive/route.ts` is a small route that
+upserts one row in `compass.cron_heartbeat` (migration 0006), and
+`vercel.json` schedules Vercel Cron to hit it once a day. Once a day is both
+the minimum Supabase needs and the most frequent a Cron Job can run on
+Vercel's own hobby plan, so the two limits happen to line up without paying
+for either.
+
+The route checks `Authorization: Bearer $CRON_SECRET` before writing
+anything. Vercel sends that header automatically on every cron invocation as
+long as an env var named exactly `CRON_SECRET` exists on the project, there
+is no separate dashboard step to wire the two together beyond setting it.
+`compass.cron_heartbeat` has RLS enabled with no policies at all, so only the
+service role can touch it, the same pattern as the write side of
+`usage_events`.
 
 ## Appearance
 

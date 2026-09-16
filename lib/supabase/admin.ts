@@ -17,6 +17,7 @@ import type { Database } from "@/lib/types/database";
  *   - inviting, disabling and deleting users (admin routes)
  *   - writing documents and document_chunks during ingestion
  *   - incrementing usage_events for the daily rate limit
+ *   - writing cron_heartbeat from the keep-alive cron route
  *
  * Every route that uses it must check the caller's role itself first — RLS is
  * not doing that job here. For ordinary user-scoped reads and writes, use

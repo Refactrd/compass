@@ -46,3 +46,11 @@ export const resendFromAddress = () =>
  */
 export const sendEmailHookSecret = () =>
   required("SEND_EMAIL_HOOK_SECRET", process.env.SEND_EMAIL_HOOK_SECRET);
+
+/**
+ * Server-side only. Vercel Cron automatically sends this same value back as
+ * `Authorization: Bearer <value>` on every invocation, as long as an env var
+ * named exactly CRON_SECRET exists, no dashboard wiring beyond setting it.
+ */
+export const cronSecret = () =>
+  required("CRON_SECRET", process.env.CRON_SECRET);

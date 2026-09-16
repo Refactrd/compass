@@ -190,6 +190,23 @@ export type Database = {
         };
         Relationships: [];
       };
+      cron_heartbeat: {
+        Row: {
+          id: boolean;
+          ping_count: number;
+          last_pinged_at: string;
+        };
+        Insert: {
+          id?: boolean;
+          ping_count?: number;
+          last_pinged_at?: string;
+        };
+        Update: {
+          ping_count?: number;
+          last_pinged_at?: string;
+        };
+        Relationships: [];
+      };
     };
     Views: { [_ in never]: never };
     Functions: {

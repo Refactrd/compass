@@ -3,7 +3,9 @@ import { notFound } from "next/navigation";
 import { Download, Plus } from "lucide-react";
 
 import { AddDepartmentForm } from "@/components/immersion/add-department-form";
+import { ArchiveEngagementButton } from "@/components/immersion/archive-engagement-button";
 import { ComprehensiveReportButton } from "@/components/immersion/comprehensive-report-button";
+import { RestoreEngagementButton } from "@/components/admin/restore-engagement-button";
 import { requireActiveMember } from "@/lib/auth/guards";
 import { createClient } from "@/lib/supabase/server";
 import { cn } from "@/lib/utils";
@@ -15,13 +17,13 @@ export default async function EngagementPage({
 }: {
   params: Promise<{ engagementId: string }>;
 }) {
-  await requireActiveMember();
+  const profile = await requireActiveMember();
   const { engagementId } = await params;
 
   const supabase = await createClient();
   const { data: engagement } = await supabase
     .from("engagements")
-    .select("id, date, status, report_storage_path, clients(name)")
+    .select("id, date, status, report_storage_path, archived_at, clients(name)")
     .eq("id", engagementId)
     .maybeSingle();
 
@@ -35,7 +37,10 @@ export default async function EngagementPage({
 
   const rows = departments ?? [];
   const client = (engagement as unknown as { clients: { name: string } | null }).clients;
+  const clientName = client?.name ?? "Unnamed client";
   const isComplete = engagement.status === "complete";
+  const isArchived = Boolean(engagement.archived_at);
+  const isAdmin = profile.role === "admin";
 
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-6 p-6">
@@ -43,20 +48,36 @@ export default async function EngagementPage({
         <Link href="/engagements" className="text-xs text-slate hover:text-ink">
           &larr; All immersion days
         </Link>
-        <div className="mt-1 flex items-center justify-between">
-          <h1 className="font-display text-2xl font-bold text-ink">
-            {client?.name ?? "Unnamed client"}
-          </h1>
-          <span
-            className={cn(
-              "rounded-md border px-2 py-0.5 text-xs font-medium",
-              isComplete
-                ? "border-brass/30 bg-brass-tint text-brass-strong"
-                : "border-border-strong bg-surface-sunken text-slate",
+        <div className="mt-1 flex items-center justify-between gap-2">
+          <h1 className="font-display text-2xl font-bold text-ink">{clientName}</h1>
+          <div className="flex shrink-0 items-center gap-2">
+            {isArchived ? (
+              <span className="rounded-md border border-danger/30 bg-danger-tint px-2 py-0.5 text-xs font-medium text-danger">
+                Archived
+              </span>
+            ) : (
+              <span
+                className={cn(
+                  "rounded-md border px-2 py-0.5 text-xs font-medium",
+                  isComplete
+                    ? "border-brass/30 bg-brass-tint text-brass-strong"
+                    : "border-border-strong bg-surface-sunken text-slate",
+                )}
+              >
+                {isComplete ? "Complete" : "In progress"}
+              </span>
             )}
-          >
-            {isComplete ? "Complete" : "In progress"}
-          </span>
+            {isAdmin && isArchived ? (
+              <RestoreEngagementButton engagementId={engagementId} />
+            ) : null}
+            {isAdmin && !isArchived ? (
+              <ArchiveEngagementButton
+                engagementId={engagementId}
+                clientName={clientName}
+                redirectTo="/engagements"
+              />
+            ) : null}
+          </div>
         </div>
         <p className="mt-1 text-sm text-slate">
           {new Date(`${engagement.date}T00:00:00Z`).toLocaleDateString(undefined, {
@@ -68,6 +89,13 @@ export default async function EngagementPage({
           })}
         </p>
       </div>
+
+      {isArchived ? (
+        <p className="rounded-xl border border-dashed border-border-strong bg-surface p-4 text-sm text-slate">
+          This immersion day is archived and read-only. Restore it to add
+          departments or generate the Comprehensive Report again.
+        </p>
+      ) : null}
 
       <ul className="flex flex-col gap-2">
         {rows.map((department) => (
@@ -105,7 +133,7 @@ export default async function EngagementPage({
         ))}
       </ul>
 
-      {!isComplete ? (
+      {isArchived ? null : !isComplete ? (
         <div className="rounded-xl border border-border bg-surface p-4">
           <h2 className="flex items-center gap-1.5 text-sm font-medium text-ink">
             <Plus className="h-4 w-4" aria-hidden="true" />

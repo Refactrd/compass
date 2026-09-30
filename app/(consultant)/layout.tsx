@@ -28,14 +28,18 @@ export default async function ConsultantLayout({
     .limit(200);
 
   // Engagements are shared (migration 0007), not per-user like conversations,
-  // so this is every active member's recent immersion days, not just this
-  // consultant's own. A short list, not the full history: unlike chat
-  // threads, a consultant is not juggling many of these at once in a single
-  // sitting, so the sidebar only needs to answer "was one started recently,"
-  // the full list already lives at /engagements.
+  // so this is every active member's immersion days, not just this
+  // consultant's own. Restricted to in_progress and non-archived: a real
+  // dry run flagged that a flat "5 most recent regardless of status" list
+  // cramps up the moment a few immersion days finish, when in practice there
+  // is rarely more than one or two actually in flight at once. Completed and
+  // archived ones stay reachable at /engagements instead of permanently
+  // occupying sidebar space for work that is already done.
   const { data: engagements } = await supabase
     .from("engagements")
-    .select("id, status, updated_at, clients(name)")
+    .select("id, updated_at, clients(name)")
+    .eq("status", "in_progress")
+    .is("archived_at", null)
     .order("updated_at", { ascending: false })
     .limit(5);
 
@@ -47,7 +51,6 @@ export default async function ConsultantLayout({
       engagements={
         (engagements ?? []).map((e) => ({
           id: e.id,
-          status: e.status,
           clientName:
             (e as unknown as { clients: { name: string } | null }).clients?.name ??
             "Unnamed client",

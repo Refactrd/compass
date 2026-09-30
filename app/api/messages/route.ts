@@ -6,6 +6,10 @@ import { syncClientContext } from "@/lib/chat/client-context";
 import { buildSystemPrompt } from "@/lib/ai/system-prompt";
 import { HouseStyleStream } from "@/lib/chat/house-style";
 import { encodeEvent, type ChatStreamEvent } from "@/lib/chat/stream-protocol";
+import type { Bottleneck } from "@/lib/immersion/bottleneck-extraction";
+import type { WorkflowDiagram } from "@/lib/immersion/diagram-schema";
+import { formatEngagementHistory } from "@/lib/immersion/engagement-history";
+import type { OpportunityMapping } from "@/lib/immersion/opportunity-mapping";
 import { consumeUsage, getUsage } from "@/lib/rate-limit";
 import { createClient } from "@/lib/supabase/server";
 
@@ -202,7 +206,46 @@ export async function POST(request: NextRequest) {
             .select("name, industry, size, notes")
             .eq("id", linked.client_id)
             .maybeSingle();
-          clientContext = data;
+
+          // Past immersion days for this same Client, so a consultant can
+          // ask about a department's bottlenecks and what Refactrd
+          // recommended right from the ordinary chat workspace, not only
+          // from inside that Engagement's own workspace. Archived
+          // engagements are excluded, the same as everywhere else archiving
+          // takes something out of view (migration 0010). Capped to the 5
+          // most recent immersion days for this client, plenty for any real
+          // client relationship at this business's scale and cheap insurance
+          // against an unbounded prompt.
+          const { data: engagementRows } = await supabase
+            .from("engagements")
+            .select("date, departments(name, before_diagram, bottlenecks, opportunity_mapping)")
+            .eq("client_id", linked.client_id)
+            .is("archived_at", null)
+            .order("date", { ascending: false })
+            .limit(5);
+
+          const engagementHistory = formatEngagementHistory(
+            (engagementRows ?? []).map((engagement) => ({
+              date: engagement.date,
+              departments: (
+                engagement as unknown as {
+                  departments: {
+                    name: string;
+                    before_diagram: WorkflowDiagram | null;
+                    bottlenecks: Bottleneck[] | null;
+                    opportunity_mapping: OpportunityMapping | null;
+                  }[];
+                }
+              ).departments.map((department) => ({
+                name: department.name,
+                beforeDiagram: department.before_diagram,
+                bottlenecks: department.bottlenecks,
+                opportunityMapping: department.opportunity_mapping,
+              })),
+            })),
+          );
+
+          clientContext = data ? { ...data, engagementHistory } : null;
         }
 
         const system = buildSystemPrompt({

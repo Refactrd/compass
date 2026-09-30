@@ -105,6 +105,7 @@ export type Database = {
           date: string;
           status: EngagementStatus;
           report_storage_path: string | null;
+          archived_at: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -115,6 +116,7 @@ export type Database = {
           date?: string;
           status?: EngagementStatus;
           report_storage_path?: string | null;
+          archived_at?: string | null;
         };
         Update: {
           client_id?: string;
@@ -122,6 +124,7 @@ export type Database = {
           date?: string;
           status?: EngagementStatus;
           report_storage_path?: string | null;
+          archived_at?: string | null;
         };
         Relationships: [];
       };

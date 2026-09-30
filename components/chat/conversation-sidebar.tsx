@@ -32,7 +32,6 @@ export type ConversationSummary = {
 export type RecentEngagement = {
   id: string;
   clientName: string;
-  status: string;
 };
 
 /**
@@ -190,11 +189,11 @@ export function ConversationSidebar({
                     href={`/engagements/${engagement.id}`}
                     className="flex items-center gap-1.5 truncate py-0.5 text-xs text-slate-light transition-colors hover:text-ink"
                   >
+                    {/* Every row here is in_progress by construction (see
+                        app/(consultant)/layout.tsx's query), so this is a
+                        plain "currently open" marker, not a status toggle. */}
                     <span
-                      className={cn(
-                        "h-1.5 w-1.5 shrink-0 rounded-full",
-                        engagement.status === "complete" ? "bg-brass" : "bg-slate-light",
-                      )}
+                      className="h-1.5 w-1.5 shrink-0 rounded-full bg-brass"
                       aria-hidden="true"
                     />
                     <span className="truncate">{engagement.clientName}</span>

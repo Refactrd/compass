@@ -110,6 +110,11 @@ export type ClientContext = {
   industry?: string | null;
   size?: string | null;
   notes?: string | null;
+  /** Pre-formatted text from lib/immersion/engagement-history.ts: past
+   * immersion days' bottlenecks and recommended solutions for this Client,
+   * when any exist. Null if none, or if nothing on file has bottlenecks or
+   * solutions worth surfacing yet. */
+  engagementHistory?: string | null;
 };
 
 /**
@@ -187,11 +192,15 @@ the organization from what the consultant tells you.
     .map(([label, value]) => `${label}: ${value}`)
     .join("\n");
 
+  const history = client.engagementHistory
+    ? `\n\nPAST IMMERSION DAYS FOR THIS CLIENT\nReal bottlenecks and solutions from Refactrd's own onsite work with this\nclient, grounded the same way an Opportunity Mapping PDF is. Cite these\nplainly when they answer what was asked; do not extend them into a claim\nthe material below does not actually support.\n\n${client.engagementHistory}`
+    : "";
+
   return `
 CLIENT CONTEXT
 What is already known about the organization under discussion. The consultant
 can correct any of it, so prefer what they say now over what is recorded here.
 
-${fields}
+${fields}${history}
 `.trim();
 }

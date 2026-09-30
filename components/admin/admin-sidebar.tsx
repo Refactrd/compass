@@ -1,6 +1,6 @@
 "use client";
 
-import { BarChart3, FileText, Users, type LucideIcon } from "lucide-react";
+import { Archive, BarChart3, FileText, Users, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -16,13 +16,14 @@ const SECTIONS: { href: string; label: string; Icon: LucideIcon }[] = [
   { href: "/admin/users", label: "Users", Icon: Users },
   { href: "/admin/documents", label: "Documents", Icon: FileText },
   { href: "/admin/usage", label: "Usage", Icon: BarChart3 },
+  { href: "/admin/engagements", label: "Archived", Icon: Archive },
 ];
 
 /**
  * Admin navigation rail.
  *
  * A labelled sidebar rather than the icon-only rail some of the reference
- * dashboards use: with three destinations, icons alone would be a guessing
+ * dashboards use: with four destinations, icons alone would be a guessing
  * game, and the labels cost nothing at this width.
  *
  * Client side purely for `usePathname`, which drives the active state.

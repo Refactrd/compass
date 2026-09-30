@@ -25,11 +25,20 @@ with expected_policies (tbl, policyname, cmd) as (
     ('documents',       'documents_write_admin',                 'ALL'),
     ('document_chunks', 'document_chunks_select_active_members', 'SELECT'),
     ('document_chunks', 'document_chunks_write_admin',           'ALL'),
-    ('usage_events',    'usage_events_select_own_or_admin',      'SELECT')
+    ('usage_events',    'usage_events_select_own_or_admin',      'SELECT'),
+    ('engagements',     'engagements_select_active_members',     'SELECT'),
+    ('engagements',     'engagements_insert_own_or_admin',       'INSERT'),
+    ('engagements',     'engagements_update_own_or_admin',       'UPDATE'),
+    ('engagements',     'engagements_delete_admin',              'DELETE'),
+    ('departments',     'departments_select_active_members',     'SELECT'),
+    ('departments',     'departments_insert_own_engagement_or_admin', 'INSERT'),
+    ('departments',     'departments_update_own_engagement_or_admin', 'UPDATE'),
+    ('departments',     'departments_delete_admin',              'DELETE')
 ),
 expected_tables (tbl) as (
   values ('users'), ('clients'), ('conversations'), ('messages'),
-         ('documents'), ('document_chunks'), ('usage_events')
+         ('documents'), ('document_chunks'), ('usage_events'),
+         ('cron_heartbeat'), ('engagements'), ('departments')
 ),
 checks (sort_key, check_name, ok, detail) as (
 
@@ -44,14 +53,14 @@ checks (sort_key, check_name, ok, detail) as (
 
   -- Tables ------------------------------------------------------------------
   union all
-  select 2, 'all 7 tables exist',
+  select 2, 'all 10 tables exist',
     (select count(*) from expected_tables t
-      join pg_tables p on p.schemaname = 'compass' and p.tablename = t.tbl) = 7,
+      join pg_tables p on p.schemaname = 'compass' and p.tablename = t.tbl) = 10,
     'found ' || (select count(*) from expected_tables t
-      join pg_tables p on p.schemaname = 'compass' and p.tablename = t.tbl) || ' of 7'
+      join pg_tables p on p.schemaname = 'compass' and p.tablename = t.tbl) || ' of 10'
 
   union all
-  select 3, 'row level security enabled on all 7',
+  select 3, 'row level security enabled on all 10',
     not exists (
       select 1 from expected_tables t
       join pg_tables p on p.schemaname = 'compass' and p.tablename = t.tbl
@@ -66,7 +75,7 @@ checks (sort_key, check_name, ok, detail) as (
 
   -- Policies ----------------------------------------------------------------
   union all
-  select 4, 'all 17 expected policies present',
+  select 4, 'all 25 expected policies present',
     not exists (
       select 1 from expected_policies e
       where not exists (
@@ -225,9 +234,10 @@ checks (sort_key, check_name, ok, detail) as (
   union all
   select 15, 'updated_at triggers installed',
     (select count(*) from pg_trigger
-      where tgname in ('clients_set_updated_at', 'conversations_set_updated_at')
-        and not tgisinternal) = 2,
-    'clients + conversations'
+      where tgname in ('clients_set_updated_at', 'conversations_set_updated_at',
+                       'engagements_set_updated_at', 'departments_set_updated_at')
+        and not tgisinternal) = 4,
+    'clients + conversations + engagements + departments'
 
   -- Vector column and index -------------------------------------------------
   union all
@@ -258,13 +268,17 @@ checks (sort_key, check_name, ok, detail) as (
         'users_status_idx', 'clients_name_lower_idx',
         'conversations_user_id_updated_at_idx', 'conversations_client_id_idx',
         'messages_conversation_id_created_at_idx', 'documents_status_idx',
-        'document_chunks_document_id_idx', 'usage_events_date_idx')) = 8,
+        'document_chunks_document_id_idx', 'usage_events_date_idx',
+        'documents_category_idx', 'engagements_client_id_idx',
+        'engagements_consultant_id_idx', 'departments_engagement_id_idx')) = 12,
     'found ' || (select count(*) from pg_indexes
       where schemaname = 'compass' and indexname in (
         'users_status_idx', 'clients_name_lower_idx',
         'conversations_user_id_updated_at_idx', 'conversations_client_id_idx',
         'messages_conversation_id_created_at_idx', 'documents_status_idx',
-        'document_chunks_document_id_idx', 'usage_events_date_idx')) || ' of 8'
+        'document_chunks_document_id_idx', 'usage_events_date_idx',
+        'documents_category_idx', 'engagements_client_id_idx',
+        'engagements_consultant_id_idx', 'departments_engagement_id_idx')) || ' of 12'
 
   union all
   select 19, 'usage_events unique on (user_id, date)',
@@ -276,17 +290,21 @@ checks (sort_key, check_name, ok, detail) as (
 
   -- Enums -------------------------------------------------------------------
   union all
-  -- 9 labels total: user_role 2, user_status 3, message_role 2,
-  -- document_status 2. Compared as exact sets, not a count, so a renamed or
+  -- 18 labels total: user_role 2, user_status 3, message_role 2,
+  -- document_status 2, engagement_status 2, department_status 2,
+  -- document_category 5. Compared as exact sets, not a count, so a renamed or
   -- extra label fails rather than balancing out.
   select 20, 'enums have exactly the expected labels',
     not exists (
       select 1 from (
         values
-          ('user_role',       'admin,consultant'),
-          ('user_status',     'active,disabled,invited'),
-          ('message_role',    'assistant,user'),
-          ('document_status', 'active,deactivated')
+          ('user_role',          'admin,consultant'),
+          ('user_status',        'active,disabled,invited'),
+          ('message_role',       'assistant,user'),
+          ('document_status',    'active,deactivated'),
+          ('engagement_status',  'complete,in_progress'),
+          ('department_status',  'complete,in_progress'),
+          ('document_category',  'constraints,engineering-docs,general,stack,tools')
       ) as want (typname, labels)
       where want.labels is distinct from (
         select string_agg(e.enumlabel, ',' order by e.enumlabel)
@@ -301,7 +319,8 @@ checks (sort_key, check_name, ok, detail) as (
         select count(*) as n from pg_enum e where e.enumtypid = t.oid
       ) c on true
       where t.typname in ('user_role', 'user_status', 'message_role',
-                          'document_status')
+                          'document_status', 'engagement_status',
+                          'department_status', 'document_category')
     ), 'no enums found')
 
   -- Storage -----------------------------------------------------------------
@@ -357,9 +376,12 @@ checks (sort_key, check_name, ok, detail) as (
           ('clients','id,name,industry,size,notes,created_by,created_at,updated_at'),
           ('conversations','id,user_id,client_id,title,created_at,updated_at,pending_client_link'),
           ('messages','id,conversation_id,role,content,source_chunk_ids,created_at'),
-          ('documents','id,title,storage_path,uploaded_by,status,uploaded_at'),
+          ('documents','id,title,storage_path,uploaded_by,status,category,uploaded_at'),
           ('document_chunks','id,document_id,content,embedding,chunk_index,created_at'),
-          ('usage_events','id,user_id,date,count')
+          ('usage_events','id,user_id,date,count'),
+          ('cron_heartbeat','id,ping_count,last_pinged_at'),
+          ('engagements','id,client_id,consultant_id,date,status,report_storage_path,created_at,updated_at'),
+          ('departments','id,engagement_id,name,transcript,before_diagram,bottlenecks,opportunity_mapping,after_diagram,pdf_storage_path,status,created_at,updated_at')
       ) as want (tbl, cols)
       where (
         select string_agg(c.column_name, ',' order by c.column_name)
@@ -378,9 +400,12 @@ checks (sort_key, check_name, ok, detail) as (
           ('clients','id,name,industry,size,notes,created_by,created_at,updated_at'),
           ('conversations','id,user_id,client_id,title,created_at,updated_at,pending_client_link'),
           ('messages','id,conversation_id,role,content,source_chunk_ids,created_at'),
-          ('documents','id,title,storage_path,uploaded_by,status,uploaded_at'),
+          ('documents','id,title,storage_path,uploaded_by,status,category,uploaded_at'),
           ('document_chunks','id,document_id,content,embedding,chunk_index,created_at'),
-          ('usage_events','id,user_id,date,count')
+          ('usage_events','id,user_id,date,count'),
+          ('cron_heartbeat','id,ping_count,last_pinged_at'),
+          ('engagements','id,client_id,consultant_id,date,status,report_storage_path,created_at,updated_at'),
+          ('departments','id,engagement_id,name,transcript,before_diagram,bottlenecks,opportunity_mapping,after_diagram,pdf_storage_path,status,created_at,updated_at')
       ) as want (tbl, cols)
       where (
         select string_agg(c.column_name, ',' order by c.column_name)

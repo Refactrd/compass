@@ -8,7 +8,9 @@ import { PageHeader, StatCard } from "@/components/admin/page-header";
 import { Pagination, TableControls } from "@/components/admin/table-controls";
 import { requireActiveAdmin } from "@/lib/auth/guards";
 import { embeddingModel } from "@/lib/ai/embeddings";
+import { DOCUMENT_CATEGORIES, categoryLabel } from "@/lib/documents/categories";
 import { createAdminClient } from "@/lib/supabase/admin";
+import type { DocumentCategory } from "@/lib/types/database";
 import { cn } from "@/lib/utils";
 
 export const metadata = { title: "Documents · Compass admin" };
@@ -19,6 +21,11 @@ const STATUS_OPTIONS = [
   { value: "all", label: "All statuses" },
   { value: "active", label: "Active" },
   { value: "deactivated", label: "Deactivated" },
+];
+
+const CATEGORY_OPTIONS = [
+  { value: "all", label: "All categories" },
+  ...DOCUMENT_CATEGORIES,
 ];
 
 const SORT_OPTIONS = [
@@ -36,6 +43,7 @@ const SORTS = {
 type SearchParams = {
   q?: string;
   status?: string;
+  category?: string;
   sort?: string;
   page?: string;
 };
@@ -52,6 +60,10 @@ export default async function AdminDocumentsPage({
   const status = params.status === "active" || params.status === "deactivated"
     ? params.status
     : "all";
+  const category =
+    params.category && DOCUMENT_CATEGORIES.some((c) => c.value === params.category)
+      ? (params.category as DocumentCategory)
+      : "all";
   const sortKey = (params.sort ?? "newest") as keyof typeof SORTS;
   const sort = SORTS[sortKey] ?? SORTS.newest;
   const page = Math.max(1, Number(params.page) || 1);
@@ -78,6 +90,7 @@ export default async function AdminDocumentsPage({
     .select("id", { count: "exact", head: true });
   if (titlePattern) countQuery = countQuery.ilike("title", titlePattern);
   if (status !== "all") countQuery = countQuery.eq("status", status);
+  if (category !== "all") countQuery = countQuery.eq("category", category);
 
   const { count: matched } = await countQuery;
   const total = matched ?? 0;
@@ -90,6 +103,7 @@ export default async function AdminDocumentsPage({
     const target = new URLSearchParams();
     if (query) target.set("q", query);
     if (status !== "all") target.set("status", status);
+    if (category !== "all") target.set("category", category);
     if (sortKey !== "newest") target.set("sort", sortKey);
     if (pageCount > 1) target.set("page", String(pageCount));
     redirect(`/admin/documents${target.size ? `?${target}` : ""}`);
@@ -99,9 +113,10 @@ export default async function AdminDocumentsPage({
 
   let listQuery = supabase
     .from("documents")
-    .select("id, title, status, uploaded_at, storage_path");
+    .select("id, title, status, category, uploaded_at, storage_path");
   if (titlePattern) listQuery = listQuery.ilike("title", titlePattern);
   if (status !== "all") listQuery = listQuery.eq("status", status);
+  if (category !== "all") listQuery = listQuery.eq("category", category);
 
   const [{ data: documents }, { count: totalDocuments }, { count: chunkTotal }] =
     await Promise.all([
@@ -137,7 +152,7 @@ export default async function AdminDocumentsPage({
     .select("id", { count: "exact", head: true })
     .eq("status", "active");
 
-  const isFiltering = query !== "" || status !== "all";
+  const isFiltering = query !== "" || status !== "all" || category !== "all";
 
   return (
     <div className="flex flex-col gap-6">
@@ -176,6 +191,7 @@ export default async function AdminDocumentsPage({
           <Suspense fallback={null}>
             <TableControls
               statusOptions={STATUS_OPTIONS}
+              categoryOptions={CATEGORY_OPTIONS}
               sortOptions={SORT_OPTIONS}
               searchPlaceholder="Search by title"
             />
@@ -188,7 +204,7 @@ export default async function AdminDocumentsPage({
               body={
                 query
                   ? `No document title contains "${query}".`
-                  : "No document has that status."
+                  : "No document matches those filters."
               }
             />
           ) : (
@@ -199,6 +215,7 @@ export default async function AdminDocumentsPage({
                     <tr className="border-b border-border text-left">
                       <Th>Title</Th>
                       <Th>Status</Th>
+                      <Th>Category</Th>
                       <Th>Chunks</Th>
                       <Th>Ingested</Th>
                       <th className="px-4 py-3" />
@@ -227,6 +244,9 @@ export default async function AdminDocumentsPage({
                           >
                             {document.status}
                           </span>
+                        </td>
+                        <td className="px-4 py-3 text-slate">
+                          {categoryLabel(document.category)}
                         </td>
                         <td className="px-4 py-3 text-slate tabular-nums">
                           {chunkCounts.get(document.id) ?? 0}

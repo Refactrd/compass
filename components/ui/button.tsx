@@ -1,5 +1,6 @@
 import type { ComponentProps } from "react";
 
+import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 
 type Variant = "primary" | "secondary" | "ghost" | "danger";
@@ -17,11 +18,18 @@ const VARIANTS: Record<Variant, string> = {
 
 type ButtonProps = ComponentProps<"button"> & {
   variant?: Variant;
+  /** Shows a spinner in place of the leading icon and disables the button.
+   * A real indicator, not just disabled-plus-different-text: see
+   * components/ui/spinner.tsx for why that distinction mattered live. */
+  loading?: boolean;
 };
 
 export function Button({
   variant = "primary",
   className,
+  loading = false,
+  disabled,
+  children,
   ...props
 }: ButtonProps) {
   return (
@@ -33,7 +41,12 @@ export function Button({
         VARIANTS[variant],
         className,
       )}
+      disabled={disabled || loading}
+      aria-busy={loading || undefined}
       {...props}
-    />
+    >
+      {loading ? <Spinner /> : null}
+      {children}
+    </button>
   );
 }

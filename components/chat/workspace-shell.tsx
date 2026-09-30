@@ -6,6 +6,7 @@ import { useState } from "react";
 import {
   ConversationSidebar,
   type ConversationSummary,
+  type RecentEngagement,
 } from "@/components/chat/conversation-sidebar";
 import { Button } from "@/components/ui/button";
 import type { SessionProfile } from "@/lib/supabase/server";
@@ -23,11 +24,13 @@ export function WorkspaceShell({
   profile,
   theme,
   conversations,
+  engagements,
   children,
 }: {
   profile: SessionProfile;
   theme: Theme;
   conversations: ConversationSummary[];
+  engagements: RecentEngagement[];
   children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
@@ -37,6 +40,7 @@ export function WorkspaceShell({
       <aside className="hidden w-72 shrink-0 lg:block">
         <ConversationSidebar
           conversations={conversations}
+          engagements={engagements}
           profile={profile}
           theme={theme}
         />
@@ -65,6 +69,7 @@ export function WorkspaceShell({
         >
           <ConversationSidebar
             conversations={conversations}
+            engagements={engagements}
             profile={profile}
             theme={theme}
             onClose={() => setOpen(false)}

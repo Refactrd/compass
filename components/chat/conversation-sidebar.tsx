@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Briefcase,
   MessageSquarePlus,
   PanelLeftClose,
   Search,
@@ -28,6 +29,12 @@ export type ConversationSummary = {
   updated_at: string;
 };
 
+export type RecentEngagement = {
+  id: string;
+  clientName: string;
+  status: string;
+};
+
 /**
  * Conversation history.
  *
@@ -38,11 +45,13 @@ export type ConversationSummary = {
  */
 export function ConversationSidebar({
   conversations,
+  engagements,
   profile,
   theme,
   onClose,
 }: {
   conversations: ConversationSummary[];
+  engagements: RecentEngagement[];
   profile: SessionProfile;
   theme: Theme;
   onClose?: () => void;
@@ -165,6 +174,37 @@ export function ConversationSidebar({
       </nav>
 
       <div className="flex flex-col gap-3 border-t border-border/60 px-4 py-3.5">
+        <div>
+          <Link
+            href="/engagements"
+            className="flex items-center gap-2 text-xs text-slate transition-colors hover:text-ink"
+          >
+            <Briefcase className="h-3.5 w-3.5" aria-hidden="true" />
+            Immersion days
+          </Link>
+          {engagements.length > 0 ? (
+            <ul className="mt-1.5 flex flex-col gap-0.5 border-l border-border/60 pl-4">
+              {engagements.map((engagement) => (
+                <li key={engagement.id}>
+                  <Link
+                    href={`/engagements/${engagement.id}`}
+                    className="flex items-center gap-1.5 truncate py-0.5 text-xs text-slate-light transition-colors hover:text-ink"
+                  >
+                    <span
+                      className={cn(
+                        "h-1.5 w-1.5 shrink-0 rounded-full",
+                        engagement.status === "complete" ? "bg-brass" : "bg-slate-light",
+                      )}
+                      aria-hidden="true"
+                    />
+                    <span className="truncate">{engagement.clientName}</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
+
         {profile.role === "admin" ? (
           <Link
             href="/admin"

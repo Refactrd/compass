@@ -10,7 +10,9 @@ import {
   MAX_UPLOAD_BYTES,
 } from "@/lib/ai/document-formats";
 import { extractText } from "@/lib/ai/extract-text";
+import { DOCUMENT_CATEGORIES } from "@/lib/documents/categories";
 import { createAdminClient } from "@/lib/supabase/admin";
+import type { DocumentCategory } from "@/lib/types/database";
 
 export type DocumentActionState =
   | { error: string }
@@ -72,6 +74,10 @@ export async function ingestDocument(
 
   const file = formData.get("file");
   const titleInput = String(formData.get("title") ?? "").trim();
+  const categoryInput = String(formData.get("category") ?? "general");
+  const category = DOCUMENT_CATEGORIES.some((c) => c.value === categoryInput)
+    ? (categoryInput as DocumentCategory)
+    : "general";
 
   if (!(file instanceof File) || file.size === 0) {
     return { error: "Choose a file to upload." };
@@ -135,6 +141,7 @@ export async function ingestDocument(
       storage_path: storagePath,
       uploaded_by: admin.id,
       status: "active",
+      category,
     })
     .select("id")
     .single();

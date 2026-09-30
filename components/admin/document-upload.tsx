@@ -7,9 +7,10 @@ import { useFormStatus } from "react-dom";
 import { ingestDocument } from "@/app/(admin)/admin/documents/actions";
 import type { DocumentActionState } from "@/app/(admin)/admin/documents/actions";
 import { Button } from "@/components/ui/button";
-import { Field, Input } from "@/components/ui/field";
+import { Field, Input, Select } from "@/components/ui/field";
 import { useActionToast } from "@/components/ui/toast";
 import { ACCEPT_ATTRIBUTE } from "@/lib/ai/document-formats";
+import { DOCUMENT_CATEGORIES } from "@/lib/documents/categories";
 
 function Submit() {
   const { pending } = useFormStatus();
@@ -75,6 +76,20 @@ export function DocumentUpload() {
             name="title"
             placeholder="Refactrd engagement methodology"
           />
+        </Field>
+
+        <Field
+          label="Category"
+          htmlFor="document-category"
+          hint="General feeds the main chat's retrieval. The other four feed Opportunity Mapping's solution generation specifically."
+        >
+          <Select id="document-category" name="category" defaultValue="general">
+            {DOCUMENT_CATEGORIES.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </Select>
         </Field>
 
         <div className="flex items-center gap-2">

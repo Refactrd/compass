@@ -158,17 +158,27 @@ export async function extractStructured({
   system,
   schema,
   prompt,
+  maxTokens = 2000,
 }: {
   system: string;
   schema: object;
   prompt: string;
+  /** Default sized for the original, small client-context extraction
+   * (name/industry/size/notes/followUps). A caller whose schema can produce
+   * a genuinely long response (Phase 2's Opportunity Mapping, several
+   * solutions each with a rationale and multiple grounding citations) must
+   * pass a larger value, or Anthropic truncates mid-string once the cap is
+   * hit and the response fails to parse as JSON at all. Caught live: a real
+   * four-solution Opportunity Mapping response cut off at 2000 tokens with
+   * "Unterminated string in JSON". */
+  maxTokens?: number;
 }): Promise<string> {
   const anthropic = getClient();
 
   try {
     const response = await anthropic.messages.create({
       model: MODEL,
-      max_tokens: 2000,
+      max_tokens: maxTokens,
       system,
       messages: [{ role: "user", content: prompt }],
       output_config: {

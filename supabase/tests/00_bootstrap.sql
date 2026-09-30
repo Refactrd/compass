@@ -45,6 +45,24 @@ create table if not exists storage.objects (
 );
 alter table storage.objects enable row level security;
 
+-- Real Supabase Storage ships this helper (object name split on "/", every
+-- segment but the last, i.e. the folder path). Migration 0008's
+-- compass-reports policy calls it to check the first path segment against
+-- an engagement id; without a stub here that policy fails to even install,
+-- not just to behave correctly, since the function does not exist at all.
+create or replace function storage.foldername(name text)
+returns text[]
+language plpgsql
+immutable
+as $$
+declare
+  _parts text[];
+begin
+  select string_to_array(name, '/') into _parts;
+  return _parts[1 : greatest(array_length(_parts, 1) - 1, 0)];
+end;
+$$;
+
 grant usage on schema public, extensions, auth, storage to anon, authenticated, service_role;
 grant select on auth.users to authenticated, service_role;
 

@@ -13,6 +13,23 @@ export type UserRole = "admin" | "consultant";
 export type UserStatus = "invited" | "active" | "disabled";
 export type MessageRole = "user" | "assistant";
 export type DocumentStatus = "active" | "deactivated";
+export type DocumentCategory =
+  | "tools"
+  | "stack"
+  | "constraints"
+  | "engineering-docs"
+  | "general";
+export type EngagementStatus = "in_progress" | "complete";
+export type DepartmentStatus = "in_progress" | "complete";
+
+/**
+ * departments.before_diagram / bottlenecks / opportunity_mapping /
+ * after_diagram are all jsonb, typed loosely here on purpose. Their real
+ * shapes belong to lib/immersion/diagram-schema.ts (the step-and-branch
+ * schema shared by both diagrams) and the extraction/mapping modules next to
+ * it, built in Phase 2 days 3-8, not guessed at here on day 1.
+ */
+export type DepartmentJson = Record<string, unknown>;
 
 /** Shape of conversations.pending_client_link. */
 export type PendingClientLink = {
@@ -80,6 +97,73 @@ export type Database = {
         };
         Relationships: [];
       };
+      engagements: {
+        Row: {
+          id: string;
+          client_id: string;
+          consultant_id: string | null;
+          date: string;
+          status: EngagementStatus;
+          report_storage_path: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          client_id: string;
+          consultant_id?: string | null;
+          date?: string;
+          status?: EngagementStatus;
+          report_storage_path?: string | null;
+        };
+        Update: {
+          client_id?: string;
+          consultant_id?: string | null;
+          date?: string;
+          status?: EngagementStatus;
+          report_storage_path?: string | null;
+        };
+        Relationships: [];
+      };
+      departments: {
+        Row: {
+          id: string;
+          engagement_id: string;
+          name: string;
+          transcript: string | null;
+          before_diagram: DepartmentJson | null;
+          bottlenecks: DepartmentJson | null;
+          opportunity_mapping: DepartmentJson | null;
+          after_diagram: DepartmentJson | null;
+          pdf_storage_path: string | null;
+          status: DepartmentStatus;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          engagement_id: string;
+          name: string;
+          transcript?: string | null;
+          before_diagram?: DepartmentJson | null;
+          bottlenecks?: DepartmentJson | null;
+          opportunity_mapping?: DepartmentJson | null;
+          after_diagram?: DepartmentJson | null;
+          pdf_storage_path?: string | null;
+          status?: DepartmentStatus;
+        };
+        Update: {
+          name?: string;
+          transcript?: string | null;
+          before_diagram?: DepartmentJson | null;
+          bottlenecks?: DepartmentJson | null;
+          opportunity_mapping?: DepartmentJson | null;
+          after_diagram?: DepartmentJson | null;
+          pdf_storage_path?: string | null;
+          status?: DepartmentStatus;
+        };
+        Relationships: [];
+      };
       conversations: {
         Row: {
           id: string;
@@ -133,6 +217,7 @@ export type Database = {
           storage_path: string;
           uploaded_by: string | null;
           status: DocumentStatus;
+          category: DocumentCategory;
           uploaded_at: string;
         };
         Insert: {
@@ -141,10 +226,12 @@ export type Database = {
           storage_path: string;
           uploaded_by?: string | null;
           status?: DocumentStatus;
+          category?: DocumentCategory;
         };
         Update: {
           title?: string;
           status?: DocumentStatus;
+          category?: DocumentCategory;
         };
         Relationships: [];
       };
@@ -220,6 +307,8 @@ export type Database = {
           query_embedding: string;
           match_count?: number;
           min_similarity?: number;
+          /** Migration 0008. Null/omitted means every active category. */
+          categories?: DocumentCategory[] | null;
         };
         Returns: {
           id: string;

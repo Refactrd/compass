@@ -42,10 +42,13 @@ const SELECT_CLASS =
 
 export function TableControls({
   statusOptions,
+  categoryOptions,
   sortOptions,
   searchPlaceholder,
 }: {
   statusOptions: { value: string; label: string }[];
+  /** Optional: only the documents table filters by category. */
+  categoryOptions?: { value: string; label: string }[];
   sortOptions: { value: string; label: string }[];
   searchPlaceholder: string;
 }) {
@@ -79,8 +82,10 @@ export function TableControls({
   );
 
   const status = searchParams.get("status") ?? "all";
+  const category = searchParams.get("category") ?? "all";
   const sort = searchParams.get("sort") ?? "newest";
-  const filtered = urlQuery !== "" || status !== "all" || sort !== "newest";
+  const filtered =
+    urlQuery !== "" || status !== "all" || category !== "all" || sort !== "newest";
 
   return (
     <div
@@ -117,6 +122,21 @@ export function TableControls({
         ))}
       </select>
 
+      {categoryOptions ? (
+        <select
+          value={category}
+          onChange={(event) => write({ category: event.target.value })}
+          aria-label="Filter by category"
+          className={SELECT_CLASS}
+        >
+          {categoryOptions.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      ) : null}
+
       <select
         value={sort}
         onChange={(event) => write({ sort: event.target.value })}
@@ -134,7 +154,7 @@ export function TableControls({
         <Button
           variant="ghost"
           className="px-2.5 py-1.5 text-xs"
-          onClick={() => write({ q: null, status: null, sort: null })}
+          onClick={() => write({ q: null, status: null, category: null, sort: null })}
         >
           <X className="h-3.5 w-3.5" aria-hidden="true" />
           Clear

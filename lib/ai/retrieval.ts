@@ -4,7 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { embed } from "@/lib/ai/embeddings";
 import type { RetrievedChunk } from "@/lib/ai/system-prompt";
-import type { Database } from "@/lib/types/database";
+import type { Database, DocumentCategory } from "@/lib/types/database";
 
 /**
  * Retrieval against the ingested Refactrd knowledge base.
@@ -79,6 +79,16 @@ type MatchRow = {
 export async function retrieve(
   supabase: SupabaseClient<Database, "compass">,
   query: string,
+  options?: {
+    /** Restricts retrieval to these Document.category values (migration
+     * 0008). Omitted or empty means the whole active knowledge base, which
+     * is what the main chat and bottleneck identification both use — Phase
+     * 2's Opportunity Mapping is the one caller that passes this, since
+     * CLAUDE.md scopes its grounding to tools/stack/constraints/
+     * engineering-docs specifically, not the general methodology material. */
+    categories?: DocumentCategory[];
+    matchCount?: number;
+  },
 ): Promise<RetrievalResult> {
   const trimmed = query.trim();
   if (!trimmed) return EMPTY_RETRIEVAL;
@@ -89,8 +99,10 @@ export async function retrieve(
   const { data, error } = await supabase.rpc("match_document_chunks", {
     // pgvector accepts the bracketed string form over PostgREST.
     query_embedding: `[${queryEmbedding.join(",")}]`,
-    match_count: MATCH_COUNT,
+    match_count: options?.matchCount ?? MATCH_COUNT,
     min_similarity: MIN_SIMILARITY,
+    categories:
+      options?.categories && options.categories.length > 0 ? options.categories : null,
   });
 
   // Retrieval failing should degrade to an unsourced answer rather than taking

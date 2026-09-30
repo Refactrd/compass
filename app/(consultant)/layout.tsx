@@ -27,11 +27,32 @@ export default async function ConsultantLayout({
     .order("updated_at", { ascending: false })
     .limit(200);
 
+  // Engagements are shared (migration 0007), not per-user like conversations,
+  // so this is every active member's recent immersion days, not just this
+  // consultant's own. A short list, not the full history: unlike chat
+  // threads, a consultant is not juggling many of these at once in a single
+  // sitting, so the sidebar only needs to answer "was one started recently,"
+  // the full list already lives at /engagements.
+  const { data: engagements } = await supabase
+    .from("engagements")
+    .select("id, status, updated_at, clients(name)")
+    .order("updated_at", { ascending: false })
+    .limit(5);
+
   return (
     <WorkspaceShell
       profile={profile}
       theme={theme}
       conversations={conversations ?? []}
+      engagements={
+        (engagements ?? []).map((e) => ({
+          id: e.id,
+          status: e.status,
+          clientName:
+            (e as unknown as { clients: { name: string } | null }).clients?.name ??
+            "Unnamed client",
+        }))
+      }
     >
       {children}
     </WorkspaceShell>

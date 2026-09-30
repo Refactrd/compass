@@ -38,3 +38,18 @@ export function Input({ className, ...props }: ComponentProps<"input">) {
     />
   );
 }
+
+export function Select({ className, ...props }: ComponentProps<"select">) {
+  return (
+    <select
+      className={cn(
+        "w-full rounded-md border border-border-strong bg-surface px-3 py-2",
+        "text-sm text-ink",
+        "focus:border-brass focus:outline-none",
+        "disabled:bg-surface-sunken disabled:text-slate",
+        className,
+      )}
+      {...props}
+    />
+  );
+}

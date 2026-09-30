@@ -199,6 +199,116 @@ select case when count(*) = 1 then 'PASS' else 'FAIL' end
 from compass.documents;
 
 -- ===========================================================================
+-- Phase 2: engagements and departments are shared-read (like clients), but
+-- writable only by the assigned consultant or an admin, and deletable only
+-- by an admin. See supabase/migrations/0007_engagements.sql.
+select '';
+select '--- engagements: shared read, owner-or-admin write, admin-only delete ---';
+set request.jwt.claims to '{"sub":"11111111-1111-1111-1111-111111111111"}';
+
+-- Looked up inline throughout rather than captured with \gset: \gset-set
+-- variables do not interpolate inside a do $$ ... $$ body (untested territory
+-- this file otherwise avoids — every existing do block above uses a literal
+-- UUID, never a psql variable), and there is only ever one row each to find.
+insert into compass.engagements (client_id, consultant_id)
+values ((select id from compass.clients where name = 'Northwind Ltd'), :'A');
+
+insert into compass.departments (engagement_id, name)
+values ((select id from compass.engagements where consultant_id = :'A'), 'Operations');
+
+set request.jwt.claims to '{"sub":"22222222-2222-2222-2222-222222222222"}';
+
+select case when count(*) = 1 then 'PASS' else 'FAIL' end
+       || ' — B can read an engagement A created' from compass.engagements;
+select case when count(*) = 1 then 'PASS' else 'FAIL' end
+       || ' — B can read a department under A''s engagement' from compass.departments;
+
+do $$
+declare n integer;
+begin
+  update compass.engagements set status = 'complete'
+  where id = (select id from compass.engagements where consultant_id = '11111111-1111-1111-1111-111111111111');
+  get diagnostics n = row_count;
+  raise notice '% — B cannot update A''s engagement (% rows)',
+    case when n = 0 then 'PASS' else 'FAIL' end, n;
+end $$;
+
+do $$
+declare n integer;
+begin
+  update compass.departments set name = 'hijacked'
+  where name = 'Operations';
+  get diagnostics n = row_count;
+  raise notice '% — B cannot update a department under A''s engagement (% rows)',
+    case when n = 0 then 'PASS' else 'FAIL' end, n;
+end $$;
+
+do $$
+begin
+  insert into compass.departments (engagement_id, name)
+  values (
+    (select id from compass.engagements where consultant_id = '11111111-1111-1111-1111-111111111111'),
+    'B trying to add a department'
+  );
+  raise notice 'FAIL — B inserted a department into A''s engagement';
+exception when insufficient_privilege then
+  raise notice 'PASS — B blocked from inserting into A''s engagement';
+end $$;
+
+do $$
+declare n integer;
+begin
+  delete from compass.engagements
+  where id = (select id from compass.engagements where consultant_id = '11111111-1111-1111-1111-111111111111');
+  get diagnostics n = row_count;
+  raise notice '% — B cannot delete A''s engagement (% rows)',
+    case when n = 0 then 'PASS' else 'FAIL' end, n;
+end $$;
+
+select '';
+select '--- admin can write and delete any engagement/department ---';
+set request.jwt.claims to '{"sub":"33333333-3333-3333-3333-333333333333"}';
+
+do $$
+declare n integer;
+begin
+  update compass.engagements set status = 'complete'
+  where id = (select id from compass.engagements where consultant_id = '11111111-1111-1111-1111-111111111111');
+  get diagnostics n = row_count;
+  raise notice '% — admin can update any engagement (% rows)',
+    case when n = 1 then 'PASS' else 'FAIL' end, n;
+end $$;
+
+do $$
+declare n integer;
+begin
+  update compass.departments set status = 'complete'
+  where name = 'Operations';
+  get diagnostics n = row_count;
+  raise notice '% — admin can update any department (% rows)',
+    case when n = 1 then 'PASS' else 'FAIL' end, n;
+end $$;
+
+do $$
+declare n integer;
+begin
+  delete from compass.departments where name = 'Operations';
+  get diagnostics n = row_count;
+  raise notice '% — admin can delete a department (% rows)',
+    case when n = 1 then 'PASS' else 'FAIL' end, n;
+end $$;
+
+do $$
+declare n integer;
+begin
+  delete from compass.engagements
+  where id = (select id from compass.engagements where consultant_id = '11111111-1111-1111-1111-111111111111');
+  get diagnostics n = row_count;
+  raise notice '% — admin can delete an engagement (% rows)',
+    case when n = 1 then 'PASS' else 'FAIL' end, n;
+end $$;
+
+-- ===========================================================================
 select '';
 select '--- disabling an account cuts database access ---';
 reset role;

@@ -8,6 +8,8 @@ import {
   type WorkflowDiagram,
 } from "@/lib/immersion/diagram-schema";
 
+const MAX_CORRECTION_CHARS = 2000;
+
 /**
  * Transcript in, "before" workflow diagram out. Phase 2 days 3-5, the
  * riskiest new capability in this phase (CLAUDE.md) — everything downstream
@@ -82,6 +84,82 @@ export async function extractWorkflow(transcript: string): Promise<WorkflowDiagr
     prompt: `Transcript:\n\n${trimmed}`,
   });
 
+  return parseWorkflowResponse(raw);
+}
+
+const REVISION_SYSTEM = `
+${EXTRACTION_SYSTEM}
+
+You are revising a workflow you (or an earlier pass) already extracted from
+this transcript, not starting fresh. The consultant who ran the actual
+interview is telling you something in it is wrong, such as a step that
+never really happens that way, or something real that got left out.
+
+Apply exactly what the consultant's correction says. Keep every other step,
+actor, description and branch from the current workflow unchanged, in the
+same order, unless the correction itself implies a reordering. Do not use
+this as a chance to rewrite or polish steps the correction did not mention.
+The transcript is still the source of truth for everything the correction
+does not touch; the correction is the source of truth for what it does
+touch, even where it adds something the transcript alone would not have
+supported, since the consultant was there and the transcript is only a
+record of what got said out loud.
+`.trim();
+
+/** A plain numbered list, not the raw JSON: this is read by the same model
+ * that produced it, not parsed by code, and a short human-readable summary
+ * keeps the revision prompt legible instead of asking it to diff JSON
+ * against prose. */
+function describeDiagram(diagram: WorkflowDiagram): string {
+  if (diagram.steps.length === 0) return "(no steps)";
+
+  const branchesByFromStep = new Map<string, typeof diagram.branches>();
+  for (const branch of diagram.branches) {
+    const list = branchesByFromStep.get(branch.fromStepId) ?? [];
+    list.push(branch);
+    branchesByFromStep.set(branch.fromStepId, list);
+  }
+  const indexById = new Map(diagram.steps.map((step, i) => [step.id, i + 1]));
+
+  return diagram.steps
+    .map((step, i) => {
+      const lines = [
+        `${i + 1}. ${step.label}${step.actor ? ` (${step.actor})` : ""}`,
+      ];
+      if (step.description) lines.push(`   ${step.description}`);
+      for (const branch of branchesByFromStep.get(step.id) ?? []) {
+        const target = indexById.get(branch.toStepId) ?? "?";
+        lines.push(`   If ${branch.condition}, skip to step ${target}.`);
+      }
+      return lines.join("\n");
+    })
+    .join("\n");
+}
+
+export async function reviseWorkflow(
+  transcript: string,
+  currentDiagram: WorkflowDiagram,
+  correction: string,
+): Promise<WorkflowDiagram> {
+  const trimmedCorrection = correction.trim();
+  if (!trimmedCorrection) {
+    throw new AiError("Write what should change before regenerating.");
+  }
+  if (trimmedCorrection.length > MAX_CORRECTION_CHARS) {
+    throw new AiError(`Keep the correction under ${MAX_CORRECTION_CHARS} characters.`);
+  }
+
+  const raw = await extractStructured({
+    system: REVISION_SYSTEM,
+    schema: WORKFLOW_EXTRACTION_SCHEMA,
+    maxTokens: 4000,
+    prompt: `Original transcript:\n\n${transcript.trim()}\n\nCurrently extracted workflow:\n\n${describeDiagram(currentDiagram)}\n\nConsultant's correction:\n\n${trimmedCorrection}`,
+  });
+
+  return parseWorkflowResponse(raw);
+}
+
+function parseWorkflowResponse(raw: string): WorkflowDiagram {
   let parsed: RawWorkflowDiagram;
   try {
     parsed = JSON.parse(raw) as RawWorkflowDiagram;

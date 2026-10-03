@@ -184,14 +184,24 @@ export function NewEngagementForm({
               </h2>
             </div>
 
+            {/* Click selects, it does not submit: a real dry run expected a
+                separate confirm step ("why can't I select it and click
+                proceed") rather than a single click immediately creating the
+                department. The Start button below is now the one place that
+                actually submits, for a chip or for freehand text alike. */}
             <div className="flex flex-wrap gap-2">
               {DEPARTMENT_SUGGESTIONS.map((name) => (
                 <button
                   key={name}
                   type="button"
                   disabled={isPending}
-                  onClick={() => submit(name)}
-                  className="rounded-full border border-border-strong bg-surface px-3 py-1.5 text-sm text-ink transition-colors hover:border-brass hover:bg-brass-tint disabled:cursor-not-allowed disabled:opacity-60"
+                  onClick={() => setDepartmentQuery(name)}
+                  aria-pressed={departmentQuery === name}
+                  className={`rounded-full border px-3 py-1.5 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                    departmentQuery === name
+                      ? "border-brass bg-brass-tint text-brass-strong"
+                      : "border-border-strong bg-surface text-ink hover:border-brass hover:bg-brass-tint"
+                  }`}
                 >
                   {name}
                 </button>

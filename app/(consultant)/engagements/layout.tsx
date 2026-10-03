@@ -1,6 +1,7 @@
 /**
  * WorkspaceShell's outer container is a fixed-height flex column
- * (`h-dvh overflow-hidden`), deliberately: the chat page pins its composer
+ * (`h-full overflow-hidden`, sized by the layout above it), deliberately:
+ * the chat page pins its composer
  * by giving its own message list a scrolling `overflow-y-auto` div inside
  * that fixed height. Every page under /engagements is ordinary long-form
  * content, not a pinned-composer layout, and inherited that fixed height

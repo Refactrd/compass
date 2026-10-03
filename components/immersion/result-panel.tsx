@@ -57,7 +57,11 @@ export function ResultPanel({
             className={cn(
               "fixed inset-y-0 right-0 z-50 flex flex-col border-l border-border bg-surface shadow-raised",
               "w-full sm:w-[min(560px,90vw)]",
-              expanded && "sm:w-[calc(100vw-280px)]",
+              // Full viewport width, over the sidebar too, not stopping at
+              // its edge: a real dry run expected "expand" to mean "give me
+              // the whole screen," and this is a fixed overlay (z-50)
+              // regardless, so there is nothing structural stopping it.
+              expanded && "sm:w-screen",
             )}
             initial={{ x: "100%" }}
             animate={{ x: 0 }}

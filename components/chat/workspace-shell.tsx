@@ -36,7 +36,7 @@ export function WorkspaceShell({
   const [open, setOpen] = useState(false);
 
   return (
-    <div className="flex h-dvh overflow-hidden">
+    <div className="flex h-full overflow-hidden">
       <aside className="hidden w-72 shrink-0 lg:block">
         <ConversationSidebar
           conversations={conversations}

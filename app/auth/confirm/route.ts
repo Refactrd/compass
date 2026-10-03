@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import type { EmailOtpType } from "@supabase/supabase-js";
 
+import { safeNext } from "@/lib/auth/safe-next";
 import { createClient } from "@/lib/supabase/server";
 
 /**
@@ -19,12 +20,6 @@ import { createClient } from "@/lib/supabase/server";
  * than swallowed, so an expired link says so instead of showing the generic
  * "no longer valid" message.
  */
-
-/** Local paths only. An absolute URL here would make this an open redirect. */
-function safeNext(raw: string | null): string {
-  if (!raw) return "/set-password";
-  return raw.startsWith("/") && !raw.startsWith("//") ? raw : "/set-password";
-}
 
 /**
  * Maps Supabase error codes onto our own copy.
@@ -48,7 +43,7 @@ function backToSetPassword(origin: string, reason: string) {
 
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = request.nextUrl;
-  const next = safeNext(searchParams.get("next"));
+  const next = safeNext(searchParams.get("next"), "/set-password");
 
   // Supabase rejected the link on its side, before redirecting here.
   const errorCode =

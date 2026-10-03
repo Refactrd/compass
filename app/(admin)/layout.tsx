@@ -1,4 +1,5 @@
 import { AdminSidebar } from "@/components/admin/admin-sidebar";
+import { SessionExpiryBanner } from "@/components/ui/session-expiry-banner";
 import { requireActiveAdmin } from "@/lib/auth/guards";
 import { getTheme } from "@/lib/theme";
 
@@ -20,11 +21,14 @@ export default async function AdminLayout({
   const profile = await requireActiveAdmin();
 
   return (
-    <div className="flex min-h-dvh flex-col lg:flex-row">
-      <AdminSidebar profile={profile} theme={theme} />
-      <div className="flex-1 lg:h-dvh lg:overflow-y-auto">
-        <div className="mx-auto w-full max-w-6xl px-6 py-8 lg:px-10">
-          {children}
+    <div className="flex min-h-dvh flex-col">
+      <SessionExpiryBanner expiresAt={profile.sessionExpiresAt} />
+      <div className="flex flex-1 flex-col lg:flex-row">
+        <AdminSidebar profile={profile} theme={theme} />
+        <div className="flex-1 lg:h-dvh lg:overflow-y-auto">
+          <div className="mx-auto w-full max-w-6xl px-6 py-8 lg:px-10">
+            {children}
+          </div>
         </div>
       </div>
     </div>

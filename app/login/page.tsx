@@ -10,8 +10,17 @@ import { getTheme } from "@/lib/theme";
 
 export const metadata = { title: "Sign in · Compass" };
 
-export default async function LoginPage() {
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ next?: string }>;
+}) {
   const theme = await getTheme();
+  // Set by proxy.ts when a session-timeout redirect lands here, and read by
+  // signIn() below, so a forced re-authentication (the 3-day time-boxed
+  // session, Authentication -> Sessions in the Supabase dashboard) returns a
+  // consultant to the exact page they were on, not just the home screen.
+  const { next } = await searchParams;
 
   return (
     <AuthShell
@@ -26,6 +35,7 @@ export default async function LoginPage() {
       }
     >
       <AuthForm action={signIn} submitLabel="Sign in">
+        {next ? <input type="hidden" name="next" value={next} /> : null}
         <Field label="Email" htmlFor="email">
           <Input
             id="email"

@@ -2,7 +2,7 @@ import "server-only";
 
 import { redirect } from "next/navigation";
 
-import { createClient } from "@/lib/supabase/server";
+import { createClient, sessionExpiresAt } from "@/lib/supabase/server";
 import type { SessionProfile } from "@/lib/supabase/server";
 
 /**
@@ -45,7 +45,10 @@ async function loadProfile(): Promise<ProfileResult> {
   // has a sign-out button and is a public route.
   if (!profile) return { state: "orphaned" };
 
-  return { state: "found", profile };
+  return {
+    state: "found",
+    profile: { ...profile, sessionExpiresAt: sessionExpiresAt(user.last_sign_in_at) },
+  };
 }
 
 /** Requires an active account of any role. Used by the consultant workspace. */

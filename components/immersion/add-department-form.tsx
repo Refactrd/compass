@@ -45,14 +45,23 @@ export function AddDepartmentForm({ engagementId }: { engagementId: string }) {
 
   return (
     <div className="flex flex-col gap-3">
+      {/* Click selects, it does not submit, same fix and same reasoning as
+          new-engagement-form.tsx's department question: a single click
+          immediately creating the department left no room to change your
+          mind before it was already in the engagement. */}
       <div className="flex flex-wrap gap-2">
         {DEPARTMENT_SUGGESTIONS.map((suggestion) => (
           <button
             key={suggestion}
             type="button"
             disabled={isPending}
-            onClick={() => submit(suggestion)}
-            className="rounded-full border border-border-strong bg-surface px-3 py-1.5 text-sm text-ink transition-colors hover:border-brass hover:bg-brass-tint disabled:cursor-not-allowed disabled:opacity-60"
+            onClick={() => setName(suggestion)}
+            aria-pressed={name === suggestion}
+            className={`rounded-full border px-3 py-1.5 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+              name === suggestion
+                ? "border-brass bg-brass-tint text-brass-strong"
+                : "border-border-strong bg-surface text-ink hover:border-brass hover:bg-brass-tint"
+            }`}
           >
             {suggestion}
           </button>

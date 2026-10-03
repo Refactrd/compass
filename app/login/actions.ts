@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 
+import { safeNext } from "@/lib/auth/safe-next";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -20,6 +21,10 @@ export async function signIn(
 ): Promise<AuthState> {
   const email = String(formData.get("email") ?? "").trim();
   const password = String(formData.get("password") ?? "");
+  // Where to land after a forced re-authentication (the time-boxed session
+  // expiring mid-use), set by proxy.ts's next= redirect and threaded through
+  // by the login page. Falls back to home for an ordinary, unprompted sign-in.
+  const next = safeNext(String(formData.get("next") ?? ""));
 
   if (!email || !password) {
     return { error: "Enter your email address and password." };
@@ -53,7 +58,7 @@ export async function signIn(
 
   if (profile.status === "invited") redirect("/set-password");
 
-  redirect("/");
+  redirect(next);
 }
 
 export async function requestPasswordReset(

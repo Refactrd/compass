@@ -19,6 +19,7 @@ import {
   finishEngagement,
   generateDepartmentOpportunities,
   generateDepartmentPdf,
+  reviseDepartmentWorkflow,
   saveTranscriptDraft,
   type DepartmentActionState,
   type DraftActionState,
@@ -36,6 +37,7 @@ import { useActionToast } from "@/components/ui/toast";
 import type { Bottleneck } from "@/lib/immersion/bottleneck-extraction";
 import type { WorkflowDiagram } from "@/lib/immersion/diagram-schema";
 import type { OpportunityMapping } from "@/lib/immersion/opportunity-mapping";
+import { computeWorkflowScore } from "@/lib/immersion/workflow-score";
 
 function ExtractSubmit({ hasResultAlready }: { hasResultAlready: boolean }) {
   const { pending } = useFormStatus();
@@ -46,6 +48,15 @@ function ExtractSubmit({ hasResultAlready }: { hasResultAlready: boolean }) {
         : hasResultAlready
           ? "Re-extract workflow"
           : "Extract workflow"}
+    </Button>
+  );
+}
+
+function ReviseSubmit({ disabled }: { disabled: boolean }) {
+  const { pending } = useFormStatus();
+  return (
+    <Button type="submit" variant="secondary" loading={pending} disabled={disabled}>
+      {pending ? "Applying correction" : "Regenerate workflow"}
     </Button>
   );
 }
@@ -151,6 +162,8 @@ export function DepartmentWorkspace({
   initialPdfPath: string | null;
 }) {
   const [transcriptOpen, setTranscriptOpen] = useState(!initialDiagram);
+  const [diagram, setDiagram] = useState(initialDiagram);
+
   const [extractState, extractAction] = useActionState<DepartmentActionState, FormData>(
     extractDepartmentWorkflow,
     null,
@@ -158,7 +171,20 @@ export function DepartmentWorkspace({
   // Collapses the transcript back down the moment extraction succeeds,
   // rather than leaving a full textarea and an "Extract" button sitting
   // above a result that already answers the question they were for.
-  useActionToast(extractState, () => setTranscriptOpen(false));
+  useActionToast(extractState, () => {
+    setTranscriptOpen(false);
+    if (extractState && "diagram" in extractState) setDiagram(extractState.diagram);
+  });
+
+  const [correction, setCorrection] = useState("");
+  const [reviseState, reviseAction] = useActionState<DepartmentActionState, FormData>(
+    reviseDepartmentWorkflow,
+    null,
+  );
+  useActionToast(reviseState, () => {
+    if (reviseState && "diagram" in reviseState) setDiagram(reviseState.diagram);
+    setCorrection("");
+  });
 
   const [opportunityState, opportunityAction] = useActionState<
     OpportunityActionState,
@@ -220,9 +246,6 @@ export function DepartmentWorkspace({
       ? "Saved"
       : null;
 
-  const diagram =
-    extractState && "diagram" in extractState ? extractState.diagram : initialDiagram;
-
   const bottlenecks =
     opportunityState && "bottlenecks" in opportunityState
       ? opportunityState.bottlenecks
@@ -259,13 +282,11 @@ export function DepartmentWorkspace({
       id: "opportunities",
       label: "Bottlenecks & solutions",
       content: (
-        <div className="p-4">
-          <OpportunityMappingView
-            bottlenecks={bottlenecks}
-            opportunityMapping={opportunityMapping}
-            diagram={diagram}
-          />
-        </div>
+        <OpportunityMappingView
+          bottlenecks={bottlenecks}
+          opportunityMapping={opportunityMapping}
+          diagram={diagram}
+        />
       ),
     });
   }
@@ -393,6 +414,34 @@ export function DepartmentWorkspace({
       ) : null}
 
       {diagram && diagram.steps.length > 0 ? (
+        <form action={reviseAction} className="flex flex-col gap-2 rounded-xl border border-dashed border-border-strong bg-surface-sunken/40 p-3">
+          <input type="hidden" name="departmentId" value={departmentId} />
+          <label htmlFor="correction" className="text-xs font-medium text-ink">
+            Something in the extracted workflow wrong?
+          </label>
+          <textarea
+            id="correction"
+            name="correction"
+            value={correction}
+            onChange={(event) => setCorrection(event.target.value)}
+            rows={2}
+            placeholder={'"No, this is how it is done..." or "No, this step also exists..."'}
+            className="w-full resize-y rounded-lg border border-border bg-surface px-2.5 py-2 text-sm text-ink placeholder:text-slate-light focus:border-brass focus:outline-none"
+          />
+          <div className="flex items-center justify-between">
+            <ReviseSubmit disabled={!correction.trim()} />
+            {hasAnalysis ? (
+              <p className="text-xs text-slate-light">
+                Bottlenecks already found for this department will not
+                regenerate. Rerun analysis below if this correction changes
+                them.
+              </p>
+            ) : null}
+          </div>
+        </form>
+      ) : null}
+
+      {diagram && diagram.steps.length > 0 ? (
         hasAnalysis ? (
           <form action={opportunityAction} className="flex items-center gap-1.5">
             <input type="hidden" name="departmentId" value={departmentId} />
@@ -415,7 +464,7 @@ export function DepartmentWorkspace({
         <ResultCard
           icon={Sparkles}
           title="Bottlenecks & opportunities found"
-          detail={`${bottlenecks.length} bottleneck${bottlenecks.length === 1 ? "" : "s"}, ${opportunityMapping.solutions.length} grounded solution${opportunityMapping.solutions.length === 1 ? "" : "s"}`}
+          detail={`${bottlenecks.length} bottleneck${bottlenecks.length === 1 ? "" : "s"}, ${opportunityMapping.solutions.length} grounded solution${opportunityMapping.solutions.length === 1 ? "" : "s"} · Workflow health ${computeWorkflowScore(bottlenecks.length).score}/100`}
           onClick={() => openPanel("opportunities")}
         />
       ) : null}

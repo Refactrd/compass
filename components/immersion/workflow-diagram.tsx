@@ -142,7 +142,14 @@ export function WorkflowDiagramView({
                     backgroundColor: "#ffffff",
                   }}
                 >
-                  <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: "12px" }}>
+                  {/* Column, not a label-beside-actor row: a real dry run
+                      found a long actor description (e.g. "Saabay
+                      Finance/Accounting Representative and Saabay Service
+                      Lead") forced the label into a few remaining pixels of
+                      row width and wrapped it into a near-unreadable stack of
+                      one-word lines. Stacking avoids the two ever competing
+                      for horizontal space at all. */}
+                  <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                     <p
                       style={{
                         margin: 0,
@@ -157,14 +164,13 @@ export function WorkflowDiagramView({
                     {step.actor ? (
                       <span
                         style={{
-                          flexShrink: 0,
+                          alignSelf: "flex-start",
                           fontSize: "11px",
                           fontWeight: 600,
                           color: colors.accent,
                           backgroundColor: colors.tertiary,
                           padding: "2px 8px",
                           borderRadius: "999px",
-                          whiteSpace: "nowrap",
                         }}
                       >
                         {step.actor}

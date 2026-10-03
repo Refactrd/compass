@@ -10,6 +10,11 @@ import {
   ReportLogo,
   TIER_LABEL,
 } from "@/lib/immersion/pdf/shared";
+import {
+  computeAverageScore,
+  computeWorkflowScore,
+  scoreLabel,
+} from "@/lib/immersion/workflow-score";
 
 /**
  * The Comprehensive Report: one collated document across every Department in
@@ -31,6 +36,7 @@ export type ReportDepartment = {
   beforeDiagram: WorkflowDiagram;
   afterDiagram: WorkflowDiagram;
   solutions: Solution[];
+  bottleneckCount: number;
 };
 
 export function ComprehensiveReportPdfDocument({
@@ -42,6 +48,9 @@ export function ComprehensiveReportPdfDocument({
   date: string;
   departments: ReportDepartment[];
 }) {
+  const departmentScores = departments.map((d) => computeWorkflowScore(d.bottleneckCount).score);
+  const overallScore = computeAverageScore(departmentScores);
+
   return (
     <Document>
       <Page size="A4" style={pdfStyles.page}>
@@ -49,10 +58,27 @@ export function ComprehensiveReportPdfDocument({
         <Text style={pdfStyles.h1}>Comprehensive Report</Text>
         <Text style={pdfStyles.meta}>{`${clientName} · ${date}`}</Text>
 
+        <View style={pdfStyles.phaseBlock} wrap={false}>
+          <Text style={pdfStyles.h3}>
+            {`Overall workflow health: ${overallScore}/100 (${scoreLabel(overallScore)})`}
+          </Text>
+          <Text style={{ fontSize: 9, opacity: 0.7, marginTop: 2 }}>
+            The mean of each department&apos;s own score below, each 100 minus
+            15 per bottleneck identified during that department&apos;s
+            interview. A computed indicator, not a measured or sourced figure.
+          </Text>
+        </View>
+
         <Text style={pdfStyles.h2}>Departments covered</Text>
-        {departments.map((department, i) => (
-          <Text key={`toc-${i}`} style={pdfStyles.tocEntry}>{`${i + 1}. ${department.name}`}</Text>
-        ))}
+        {departments.map((department, i) => {
+          const { score } = computeWorkflowScore(department.bottleneckCount);
+          return (
+            <Text
+              key={`toc-${i}`}
+              style={pdfStyles.tocEntry}
+            >{`${i + 1}. ${department.name} — health ${score}/100`}</Text>
+          );
+        })}
 
         <ReportFooter clientName={clientName} />
       </Page>
@@ -60,10 +86,14 @@ export function ComprehensiveReportPdfDocument({
       {departments.map((department, deptIndex) => {
         const roadmap = buildRoadmap(department.solutions);
         const prefix = `dept-${deptIndex}`;
+        const { score } = computeWorkflowScore(department.bottleneckCount);
 
         return (
           <Page key={prefix} size="A4" style={pdfStyles.page} wrap>
             <Text style={pdfStyles.h1}>{department.name}</Text>
+            <Text style={pdfStyles.meta}>
+              {`Workflow health score: ${score}/100 (${scoreLabel(score)})`}
+            </Text>
 
             <DiagramSection
               title="Current workflow"

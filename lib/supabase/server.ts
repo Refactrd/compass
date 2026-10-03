@@ -45,6 +45,13 @@ export type SessionProfile = {
   email: string;
   role: UserRole;
   status: UserStatus;
+  /** ISO timestamp: when the session Supabase Auth time-boxes to 3 days
+   * (set in the Supabase dashboard, Authentication -> Sessions) actually
+   * runs out. Computed from auth.users.last_sign_in_at, which only moves on
+   * a real sign-in event, not on each silent token refresh, so it is a
+   * stable anchor for "when did this session begin." Null if last_sign_in_at
+   * is somehow unavailable. Drives components/ui/session-expiry-banner.tsx. */
+  sessionExpiresAt: string | null;
 };
 
 /**
@@ -67,6 +74,16 @@ export async function getSessionProfile(): Promise<SessionProfile | null> {
     .select("id, email, role, status")
     .eq("id", user.id)
     .single();
+  if (!profile) return null;
 
-  return profile ?? null;
+  return { ...profile, sessionExpiresAt: sessionExpiresAt(user.last_sign_in_at) };
+}
+
+const SESSION_TIMEBOX_MS = 3 * 24 * 60 * 60 * 1000;
+
+/** Shared with lib/auth/guards.ts's own profile load, which is the path
+ * every real page actually goes through; this export keeps both in sync. */
+export function sessionExpiresAt(lastSignInAt: string | null | undefined): string | null {
+  if (!lastSignInAt) return null;
+  return new Date(new Date(lastSignInAt).getTime() + SESSION_TIMEBOX_MS).toISOString();
 }

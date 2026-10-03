@@ -17,7 +17,7 @@ import {
   ComprehensiveReportPdfDocument,
   type ReportDepartment,
 } from "@/lib/immersion/pdf/comprehensive-report-pdf";
-import { extractWorkflow } from "@/lib/immersion/transcript-extraction";
+import { extractWorkflow, reviseWorkflow } from "@/lib/immersion/transcript-extraction";
 import { createClient } from "@/lib/supabase/server";
 
 export type DepartmentActionState =
@@ -108,6 +108,77 @@ export async function extractDepartmentWorkflow(
             ? ` with ${branchCount} decision point${branchCount === 1 ? "" : "s"}.`
             : ".")
         : "No workflow could be extracted from that transcript. Try adding more detail.",
+    diagram,
+  };
+}
+
+/**
+ * Corrects an already-extracted "before" diagram against the consultant's
+ * own correction, rather than re-extracting from the transcript alone. A
+ * real dry run asked for this directly: extraction can mishear or miss
+ * something a consultant who actually ran the interview knows is wrong, and
+ * the only recourse before this was pasting a doctored transcript and
+ * hoping. Loops as many times as needed: each correction's result becomes
+ * the "currently extracted workflow" the next correction is applied against.
+ *
+ * Deliberately does not touch bottlenecks, opportunity_mapping or
+ * after_diagram even if they already exist for this department. That is a
+ * real tradeoff a consultant should make on purpose by re-running "Find
+ * bottlenecks & opportunities" themselves, not something this silently
+ * cascades into regenerating, since those stages are a second AI pass with
+ * their own cost and their own grounding discipline to re-satisfy.
+ */
+export async function reviseDepartmentWorkflow(
+  _prev: DepartmentActionState,
+  formData: FormData,
+): Promise<DepartmentActionState> {
+  await requireActiveMember();
+
+  const departmentId = String(formData.get("departmentId") ?? "");
+  const correction = String(formData.get("correction") ?? "").trim();
+
+  if (!departmentId) return { error: "No department." };
+  if (!correction) return { error: "Write what should change first." };
+
+  const supabase = await createClient();
+  const { data: department } = await supabase
+    .from("departments")
+    .select("transcript, before_diagram")
+    .eq("id", departmentId)
+    .maybeSingle();
+
+  if (!department) return { error: "That department no longer exists." };
+  if (!department.transcript || !department.before_diagram) {
+    return { error: "Extract a workflow first, then correct it." };
+  }
+
+  let diagram: WorkflowDiagram;
+  try {
+    diagram = await reviseWorkflow(
+      department.transcript,
+      department.before_diagram as unknown as WorkflowDiagram,
+      correction,
+    );
+  } catch (error) {
+    return {
+      error: error instanceof AiError ? error.message : "Could not apply that correction.",
+    };
+  }
+
+  const { error } = await supabase
+    .from("departments")
+    .update({ before_diagram: diagram as unknown as Record<string, unknown> })
+    .eq("id", departmentId);
+
+  if (error) {
+    return { error: `Corrected, but could not save: ${error.message}` };
+  }
+
+  revalidatePath("/engagements", "layout");
+
+  const stepCount = diagram.steps.length;
+  return {
+    ok: `Updated: ${stepCount} step${stepCount === 1 ? "" : "s"} now.`,
     diagram,
   };
 }
@@ -476,7 +547,7 @@ export async function generateComprehensiveReport(
 
   const { data: departments } = await supabase
     .from("departments")
-    .select("name, before_diagram, after_diagram, opportunity_mapping")
+    .select("name, before_diagram, after_diagram, opportunity_mapping, bottlenecks")
     .eq("engagement_id", engagementId)
     .order("created_at", { ascending: true });
 
@@ -501,6 +572,7 @@ export async function generateComprehensiveReport(
     beforeDiagram: department.before_diagram as unknown as WorkflowDiagram,
     afterDiagram: department.after_diagram as unknown as WorkflowDiagram,
     solutions: (department.opportunity_mapping as unknown as OpportunityMapping).solutions,
+    bottleneckCount: ((department.bottlenecks as unknown as Bottleneck[] | null) ?? []).length,
   }));
 
   const { renderToBuffer } = await import("@react-pdf/renderer");

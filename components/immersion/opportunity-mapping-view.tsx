@@ -1,6 +1,7 @@
 import type { Bottleneck } from "@/lib/immersion/bottleneck-extraction";
 import type { WorkflowDiagram } from "@/lib/immersion/diagram-schema";
 import type { OpportunityMapping } from "@/lib/immersion/opportunity-mapping";
+import { computeWorkflowScore, scoreLabel } from "@/lib/immersion/workflow-score";
 import { cn } from "@/lib/utils";
 
 /**
@@ -14,7 +15,35 @@ import { cn } from "@/lib/utils";
  * no real grounding entirely, so what reaches this component is always
  * grounded, but a consultant still deserves to see what it is grounded in
  * before it goes in front of a client, which is what the chips below do.
+ *
+ * Forced light, same as the "Current workflow" and "Transformed workflow"
+ * tabs beside it in the result panel, even though this one is Compass's own
+ * palette rather than Refactrd's brand one: a real dry run in dark mode found
+ * this was the one tab that still flipped dark, reading as visually
+ * inconsistent next to the two diagram tabs either side of it. The
+ * `--c-*` custom properties below are only ever redefined on `:root`
+ * (app/globals.css), so a nested `data-theme` attribute here would do
+ * nothing; redeclaring them directly on this wrapper works because custom
+ * properties cascade normally to descendants, unlike that root-scoped
+ * selector.
  */
+
+const FORCED_LIGHT_VARS = {
+  "--c-ink": "#1c1c1e",
+  "--c-ink-muted": "#45464a",
+  "--c-canvas": "#faf9f6",
+  "--c-surface": "#ffffff",
+  "--c-surface-sunken": "#f4f2ed",
+  "--c-slate": "#6e7076",
+  "--c-slate-light": "#9b9ba1",
+  "--c-border": "#e4e1da",
+  "--c-border-strong": "#cfcbc1",
+  "--c-brass": "#b08d57",
+  "--c-brass-strong": "#8a6d3f",
+  "--c-brass-tint": "#f3ede2",
+  "--c-danger": "#a03d33",
+  "--c-danger-tint": "#f7ece9",
+} as React.CSSProperties;
 
 const TIER_LABEL: Record<string, string> = {
   priority: "Priority",
@@ -39,9 +68,28 @@ export function OpportunityMappingView({
 }) {
   const stepLabel = (stepId: string) =>
     diagram.steps.find((step) => step.id === stepId)?.label ?? stepId;
+  const { score } = computeWorkflowScore(bottlenecks.length);
 
   return (
-    <div className="flex flex-col gap-6">
+    <div
+      className="flex flex-col gap-6 bg-surface p-4 text-ink"
+      style={FORCED_LIGHT_VARS}
+    >
+      <div className="flex items-center justify-between rounded-lg border border-border-strong bg-surface-sunken px-3 py-2.5">
+        <div>
+          <p className="text-xs text-slate">Workflow health score</p>
+          <p className="text-xs text-slate-light">
+            100, minus 15 for each bottleneck identified. Not a measured or
+            sourced figure, just a plain count turned into something
+            comparable across departments.
+          </p>
+        </div>
+        <div className="shrink-0 text-right">
+          <p className="font-display text-2xl font-bold text-ink">{score}</p>
+          <p className="text-xs font-medium text-brass-strong">{scoreLabel(score)}</p>
+        </div>
+      </div>
+
       {!opportunityMapping.categoryMaterialAvailable ? (
         <p className="rounded-lg border border-border-strong bg-surface-sunken px-3 py-2 text-xs text-slate">
           No Refactrd tools, stack, constraints, or engineering-docs material

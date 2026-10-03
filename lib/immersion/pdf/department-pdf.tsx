@@ -10,6 +10,7 @@ import {
   ReportLogo,
   TIER_LABEL,
 } from "@/lib/immersion/pdf/shared";
+import { computeWorkflowScore, scoreLabel } from "@/lib/immersion/workflow-score";
 
 /**
  * The client-facing department PDF. Refactrd's real brand, not Compass's own
@@ -63,6 +64,9 @@ export function DepartmentPdfDocument({
         <DiagramSection title="Current workflow" diagram={beforeDiagram} keyPrefix="before" />
 
         <Text style={pdfStyles.h2}>Bottlenecks identified</Text>
+        <Text style={pdfStyles.meta}>
+          {`Workflow health score: ${computeWorkflowScore(bottlenecks.length).score}/100 (${scoreLabel(computeWorkflowScore(bottlenecks.length).score)}). 100, minus 15 per bottleneck identified during the interview.`}
+        </Text>
         {bottlenecks.length === 0 ? (
           <Text style={{ fontSize: 9, opacity: 0.6 }}>None identified from this interview.</Text>
         ) : (

@@ -117,7 +117,13 @@ export function normalizeWorkflow(parsed: RawWorkflowDiagram): WorkflowDiagram {
 
   const steps: WorkflowStep[] = rawSteps
     .map((step, index): WorkflowStep | null => {
-      const label = cleanWorkflowText(step?.label, 200);
+      // 90 chars: short enough that a label fits the flowchart box
+      // (components/immersion/workflow-diagram.tsx and the PDF's matching
+      // template) in one or two lines without needing to shrink type or
+      // grow the box. The extraction and revision prompts already ask for
+      // one short sentence; this is the backstop for when they do not
+      // comply, cutting at a word boundary rather than mid-word.
+      const label = cleanWorkflowText(step?.label, 90);
       if (!label) return null;
       return {
         id: `step-${index + 1}`,

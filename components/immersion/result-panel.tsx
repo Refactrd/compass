@@ -108,7 +108,13 @@ export function ResultPanel({
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto">{activeTab?.content}</div>
+            {/* Centered, width-capped reading column, same idea as Claude's
+                own artifact panel: a real dry run found content spanning
+                the panel's full width, especially once expanded to near-
+                full-screen, hard to actually read line to line. */}
+            <div className="flex-1 overflow-y-auto">
+              <div className="mx-auto max-w-2xl">{activeTab?.content}</div>
+            </div>
           </motion.div>
         </>
       ) : null}

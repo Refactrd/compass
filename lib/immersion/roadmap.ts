@@ -41,3 +41,42 @@ export function buildRoadmap(solutions: Solution[]): Roadmap {
 
   return { phases };
 }
+
+export type EngagementRoadmapSolution = {
+  departmentName: string;
+  solution: Solution;
+};
+
+export type EngagementRoadmapPhase = {
+  label: string;
+  rangeDays: string;
+  entries: EngagementRoadmapSolution[];
+};
+
+export type EngagementRoadmap = {
+  phases: EngagementRoadmapPhase[];
+};
+
+/**
+ * The Comprehensive Report's organization-wide roadmap (CLAUDE.md's 90-day
+ * roadmap, reworked from per-department into one shared Day 0-30 / 30-60 /
+ * 60-90 sequence spanning every department in the Engagement). Same
+ * tier-to-phase mapping as buildRoadmap, just pooled across departments
+ * instead of scoped to one, each entry keeping its department name so the
+ * report's table can say which department a solution belongs to.
+ */
+export function buildEngagementRoadmap(
+  departments: { name: string; solutions: Solution[] }[],
+): EngagementRoadmap {
+  const phases = PHASES.map((phase) => ({
+    label: phase.label,
+    rangeDays: phase.rangeDays,
+    entries: departments.flatMap((department) =>
+      department.solutions
+        .filter((solution) => solution.tier === phase.tier)
+        .map((solution) => ({ departmentName: department.name, solution })),
+    ),
+  })).filter((phase) => phase.entries.length > 0);
+
+  return { phases };
+}

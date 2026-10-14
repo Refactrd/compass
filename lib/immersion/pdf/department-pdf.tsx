@@ -10,7 +10,7 @@ import {
   ReportLogo,
   TIER_LABEL,
 } from "@/lib/immersion/pdf/shared";
-import { computeWorkflowScore, scoreLabel } from "@/lib/immersion/workflow-score";
+import { bracketFor, computeWorkflowScore } from "@/lib/immersion/workflow-score";
 
 /**
  * The client-facing department PDF. Refactrd's real brand, not Compass's own
@@ -28,8 +28,8 @@ import { computeWorkflowScore, scoreLabel } from "@/lib/immersion/workflow-score
  * guideline's own documented fallback for that case, Poppins for headings,
  * rather than collapsing everything onto the body font.
  *
- * Grounding chips (see components/immersion/opportunity-mapping-view.tsx)
- * are deliberately not shown here: they are the consultant's own
+ * Grounding chips (see components/immersion/solutions-view.tsx) are
+ * deliberately not shown here: they are the consultant's own
  * verification surface before a document goes to a client, not something a
  * prospective client should see in the deliverable itself.
  */
@@ -65,7 +65,7 @@ export function DepartmentPdfDocument({
 
         <Text style={pdfStyles.h2}>Bottlenecks identified</Text>
         <Text style={pdfStyles.meta}>
-          {`Workflow health score: ${computeWorkflowScore(bottlenecks.length).score}/100 (${scoreLabel(computeWorkflowScore(bottlenecks.length).score)}). 100, minus 15 per bottleneck identified during the interview.`}
+          {`Workflow health: ${bracketFor(computeWorkflowScore(bottlenecks.length).score).grade} (${bracketFor(computeWorkflowScore(bottlenecks.length).score).label}). Based on the number of bottlenecks identified during the interview.`}
         </Text>
         {bottlenecks.length === 0 ? (
           <Text style={{ fontSize: 9, opacity: 0.6 }}>None identified from this interview.</Text>

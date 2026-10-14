@@ -59,6 +59,11 @@ both are added when this is displayed. For example return "the lead is
 qualified", never "If the lead is qualified" and never "the lead is
 qualified, skip to step 4".
 
+label stays one short sentence, under roughly 12 words, same constraint as
+the original diagram: it renders inside a fixed-size flowchart box. Move
+any extra detail from a changed step into its description instead of
+lengthening the label.
+
 Write every label, actor, and description without em dashes or en dashes. Use
 commas or full stops instead. Ordinary hyphens in compound words are fine.
 `.trim();

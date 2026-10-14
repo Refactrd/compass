@@ -95,55 +95,67 @@ export const pdfStyles = StyleSheet.create({
     marginTop: 12,
     marginBottom: 6,
   },
-  stepRow: { flexDirection: "row", marginBottom: 10 },
-  rail: { width: 24, alignItems: "center" },
-  circle: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: colors.primary,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  circleText: { fontSize: 8, fontFamily: "Montserrat", fontWeight: 700, color: colors.background },
+  // Flowchart column: one box per step, centered, connected by a plain
+  // arrow character rather than a drawn line. react-pdf's Yoga layout can do
+  // bordered boxes, but a hand-verified Text glyph is the lower-risk choice
+  // after this pipeline already hit one real rendering surprise from an
+  // under-tested approach (the woff2 font crash, lib/immersion/pdf/shared.tsx
+  // history) — a centered "arrow down" character cannot mis-measure the way
+  // a zero-size bordered triangle could.
+  // alignSelf: "center" within the document's default-column flex parent,
+  // not marginHorizontal: "auto" — react-pdf's Yoga layout supports the
+  // former (already used elsewhere in this file, e.g. tierBadge's
+  // alignSelf: "flex-start"), and "auto" margins are a plain-CSS centering
+  // trick this engine is not confirmed to honour the same way.
+  flowColumn: { width: "100%", maxWidth: 320, alignSelf: "center", alignItems: "center" },
+  flowArrow: { fontSize: 14, color: colors.tertiary, marginVertical: 2 },
   stepCard: {
-    flex: 1,
-    marginLeft: 10,
-    padding: 8,
+    width: "100%",
+    padding: 10,
     borderWidth: 1,
     borderColor: colors.tertiary,
-    borderRadius: 6,
+    borderRadius: 8,
+    backgroundColor: "#ffffff",
+    alignItems: "center",
   },
-  stepHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
-  // minWidth: 0 is the actual fix, not flex: 1 alone: a flex item's default
-  // min-width is its content's intrinsic width, which blocks shrinking (and
-  // therefore wrapping) below that regardless of flex: 1. Same classic
-  // flexbox behavior in react-pdf's Yoga layout as in CSS.
+  stepEyebrow: {
+    fontSize: 7,
+    fontFamily: "Montserrat",
+    fontWeight: 700,
+    letterSpacing: 0.6,
+    color: colors.accent,
+  },
+  // No minWidth: 0 flex trick needed anymore: the label is no longer beside
+  // a same-row actor tag competing for width, it is the sole thing on its
+  // own line in a centered, full-width card.
   stepLabel: {
     fontSize: 10.5,
     fontFamily: "Montserrat",
     fontWeight: 700,
-    flex: 1,
-    minWidth: 0,
-    marginRight: 8,
+    marginTop: 2,
+    textAlign: "center",
   },
   actorTag: {
     fontSize: 8,
     color: colors.accent,
     backgroundColor: colors.tertiary,
-    paddingHorizontal: 5,
+    paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 8,
-    flexShrink: 0,
+    marginTop: 6,
   },
-  stepDescription: { fontSize: 9, marginTop: 3, opacity: 0.75 },
+  stepDescription: { fontSize: 9, marginTop: 6, opacity: 0.75, textAlign: "center" },
   branchBadge: {
     fontSize: 8.5,
     color: colors.primary,
-    backgroundColor: colors.secondary,
-    padding: 4,
-    borderRadius: 4,
-    marginTop: 4,
+    backgroundColor: "#ffffff",
+    borderWidth: 1,
+    borderStyle: "dashed",
+    borderColor: colors.secondary,
+    padding: 5,
+    borderRadius: 6,
+    marginTop: 6,
+    textAlign: "center",
   },
   bottleneckCard: {
     padding: 8,
@@ -214,6 +226,47 @@ export const pdfStyles = StyleSheet.create({
   roadmapItem: { fontSize: 9.5, marginTop: 4 },
   roadmapItemTitle: { fontFamily: "Montserrat", fontWeight: 700 },
   tocEntry: { fontSize: 10.5, marginTop: 6 },
+  // Organization-wide Day 0-30 / 30-60 / 60-90 roadmap tables. react-pdf has
+  // no real <table> primitive, so this is plain flexDirection: "row" Views,
+  // the same mechanism a CSS table-as-flexbox fallback would use.
+  table: {
+    borderWidth: 1,
+    borderColor: colors.tertiary,
+    borderRadius: 6,
+    marginBottom: 14,
+  },
+  tableHeaderRow: { flexDirection: "row", backgroundColor: colors.primary },
+  tableHeaderCellSolution: {
+    flex: 2,
+    padding: 6,
+    fontSize: 8.5,
+    fontFamily: "Montserrat",
+    fontWeight: 700,
+    color: colors.background,
+  },
+  tableHeaderCellTime: {
+    flex: 1,
+    padding: 6,
+    fontSize: 8.5,
+    fontFamily: "Montserrat",
+    fontWeight: 700,
+    color: colors.background,
+    borderLeftWidth: 1,
+    borderLeftColor: colors.background,
+  },
+  tableRow: { flexDirection: "row", borderTopWidth: 1, borderTopColor: colors.tertiary },
+  tableCellSolution: { flex: 2, padding: 6, fontSize: 9 },
+  tableCellSolutionDept: { fontSize: 7.5, opacity: 0.6, marginBottom: 1 },
+  tableCellTime: {
+    flex: 1,
+    padding: 6,
+    fontSize: 9,
+    borderLeftWidth: 1,
+    borderLeftColor: colors.tertiary,
+  },
+  // The closing Summary section: real prose, not the condensed card/badge
+  // language the rest of this report uses.
+  summaryParagraph: { fontSize: 10, lineHeight: 1.5, marginTop: 10 },
 });
 
 export const TIER_LABEL: Record<Solution["tier"], string> = {
@@ -256,20 +309,16 @@ export function DiagramSection({
       {diagram.steps.length === 0 ? (
         <Text style={{ fontSize: 9, opacity: 0.6 }}>No workflow extracted.</Text>
       ) : (
-        diagram.steps.map((step, index) => {
+        <View style={pdfStyles.flowColumn}>
+        {diagram.steps.map((step, index) => {
           const branches = branchesByFromStep.get(step.id) ?? [];
+          const isLast = index === diagram.steps.length - 1;
           return (
-            <View key={`${keyPrefix}-${step.id}`} style={pdfStyles.stepRow}>
-              <View style={pdfStyles.rail}>
-                <View style={pdfStyles.circle}>
-                  <Text style={pdfStyles.circleText}>{index + 1}</Text>
-                </View>
-              </View>
+            <View key={`${keyPrefix}-${step.id}`} style={{ width: "100%" }} wrap={false}>
               <View style={pdfStyles.stepCard}>
-                <View style={pdfStyles.stepHeader}>
-                  <Text style={pdfStyles.stepLabel}>{step.label}</Text>
-                  {step.actor ? <Text style={pdfStyles.actorTag}>{step.actor}</Text> : null}
-                </View>
+                <Text style={pdfStyles.stepEyebrow}>{`STEP ${index + 1}`}</Text>
+                <Text style={pdfStyles.stepLabel}>{step.label}</Text>
+                {step.actor ? <Text style={pdfStyles.actorTag}>{step.actor}</Text> : null}
                 {step.description ? (
                   <Text style={pdfStyles.stepDescription}>{step.description}</Text>
                 ) : null}
@@ -286,9 +335,11 @@ export function DiagramSection({
                   );
                 })}
               </View>
+              {!isLast ? <Text style={pdfStyles.flowArrow}>&darr;</Text> : null}
             </View>
           );
-        })
+        })}
+        </View>
       )}
     </View>
   );

@@ -6,6 +6,7 @@ import {
   ChevronDown,
   Download,
   FileText,
+  Lightbulb,
   RefreshCw,
   Sparkles,
   Workflow,
@@ -27,9 +28,10 @@ import {
   type OpportunityActionState,
   type PdfActionState,
 } from "@/app/(consultant)/engagements/actions";
-import { OpportunityMappingView } from "@/components/immersion/opportunity-mapping-view";
+import { BottlenecksView } from "@/components/immersion/bottlenecks-view";
 import { ResultCard } from "@/components/immersion/result-card";
 import { ResultPanel, type ResultPanelTab } from "@/components/immersion/result-panel";
+import { SolutionsView } from "@/components/immersion/solutions-view";
 import { WorkflowDiagramView } from "@/components/immersion/workflow-diagram";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
@@ -37,7 +39,7 @@ import { useActionToast } from "@/components/ui/toast";
 import type { Bottleneck } from "@/lib/immersion/bottleneck-extraction";
 import type { WorkflowDiagram } from "@/lib/immersion/diagram-schema";
 import type { OpportunityMapping } from "@/lib/immersion/opportunity-mapping";
-import { computeWorkflowScore } from "@/lib/immersion/workflow-score";
+import { bracketFor, computeWorkflowScore } from "@/lib/immersion/workflow-score";
 
 function ExtractSubmit({ hasResultAlready }: { hasResultAlready: boolean }) {
   const { pending } = useFormStatus();
@@ -277,17 +279,18 @@ export function DepartmentWorkspace({
       content: <WorkflowDiagramView diagram={diagram} title={`${departmentName}, today`} />,
     });
   }
-  if (bottlenecks && opportunityMapping && diagram) {
+  if (bottlenecks && diagram) {
     tabs.push({
-      id: "opportunities",
-      label: "Bottlenecks & solutions",
-      content: (
-        <OpportunityMappingView
-          bottlenecks={bottlenecks}
-          opportunityMapping={opportunityMapping}
-          diagram={diagram}
-        />
-      ),
+      id: "bottlenecks",
+      label: "Bottlenecks",
+      content: <BottlenecksView bottlenecks={bottlenecks} diagram={diagram} />,
+    });
+  }
+  if (opportunityMapping) {
+    tabs.push({
+      id: "solutions",
+      label: "Recommended Solutions",
+      content: <SolutionsView opportunityMapping={opportunityMapping} />,
     });
   }
   if (afterDiagram && afterDiagram.steps.length > 0) {
@@ -428,7 +431,12 @@ export function DepartmentWorkspace({
             placeholder={'"No, this is how it is done..." or "No, this step also exists..."'}
             className="w-full resize-y rounded-lg border border-border bg-surface px-2.5 py-2 text-sm text-ink placeholder:text-slate-light focus:border-brass focus:outline-none"
           />
-          <div className="flex items-center justify-between">
+          {/* Stacked, not a justify-between row: the row version squeezed the
+              button against the note's text on a narrow panel width, the
+              exact "Regenerate button is not responsive" bug a real dry run
+              screenshotted. The button owns its own line regardless of
+              width; the note, when it appears, sits below it. */}
+          <div className="flex flex-col gap-1.5">
             <ReviseSubmit disabled={!correction.trim()} />
             {hasAnalysis ? (
               <p className="text-xs text-slate-light">
@@ -460,12 +468,21 @@ export function DepartmentWorkspace({
         )
       ) : null}
 
-      {bottlenecks && opportunityMapping && diagram ? (
+      {bottlenecks && diagram ? (
         <ResultCard
           icon={Sparkles}
-          title="Bottlenecks & opportunities found"
-          detail={`${bottlenecks.length} bottleneck${bottlenecks.length === 1 ? "" : "s"}, ${opportunityMapping.solutions.length} grounded solution${opportunityMapping.solutions.length === 1 ? "" : "s"} · Workflow health ${computeWorkflowScore(bottlenecks.length).score}/100`}
-          onClick={() => openPanel("opportunities")}
+          title="Bottlenecks found"
+          detail={`${bottlenecks.length} bottleneck${bottlenecks.length === 1 ? "" : "s"} · Workflow health: ${bracketFor(computeWorkflowScore(bottlenecks.length).score).label}`}
+          onClick={() => openPanel("bottlenecks")}
+        />
+      ) : null}
+
+      {opportunityMapping ? (
+        <ResultCard
+          icon={Lightbulb}
+          title="Recommended solutions ready"
+          detail={`${opportunityMapping.solutions.length} grounded solution${opportunityMapping.solutions.length === 1 ? "" : "s"}`}
+          onClick={() => openPanel("solutions")}
         />
       ) : null}
 

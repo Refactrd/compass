@@ -460,7 +460,12 @@ export function DepartmentWorkspace({
             placeholder={'"No, this is how it is done..." or "No, this step also exists..."'}
             className="w-full resize-y rounded-lg border border-border bg-surface px-2.5 py-2 text-sm text-ink placeholder:text-slate-light focus:border-brass focus:outline-none"
           />
-          <div className="flex items-center justify-between">
+          {/* Stacked, not a justify-between row: the row version squeezed the
+              button against the note's text on a narrow panel width, the
+              exact "Regenerate button is not responsive" bug a real dry run
+              screenshotted. The button owns its own line regardless of
+              width; the note, when it appears, sits below it. */}
+          <div className="flex flex-col gap-1.5">
             <ReviseSubmit disabled={!correction.trim()} />
             {hasAnalysis ? (
               <p className="text-xs text-slate-light">

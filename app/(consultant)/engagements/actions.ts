@@ -7,6 +7,7 @@ import { AiError } from "@/lib/ai/client";
 import { requireActiveMember } from "@/lib/auth/guards";
 import { extractBottlenecks, type Bottleneck } from "@/lib/immersion/bottleneck-extraction";
 import { generateAfterDiagram } from "@/lib/immersion/after-diagram";
+import { generateComprehensiveSummary } from "@/lib/immersion/comprehensive-summary";
 import type { WorkflowDiagram } from "@/lib/immersion/diagram-schema";
 import {
   generateOpportunityMapping,
@@ -579,6 +580,18 @@ export async function generateComprehensiveReport(
     opportunityMapping: department.opportunity_mapping as unknown as OpportunityMapping,
   }));
 
+  let summary: string;
+  try {
+    summary = await generateComprehensiveSummary({ clientName, departments: reportDepartments });
+  } catch (error) {
+    return {
+      error:
+        error instanceof AiError
+          ? error.message
+          : "Could not generate the report's summary section.",
+    };
+  }
+
   const { renderToBuffer } = await import("@react-pdf/renderer");
   const buffer = await renderToBuffer(
     ComprehensiveReportPdfDocument({
@@ -589,6 +602,7 @@ export async function generateComprehensiveReport(
         day: "numeric",
       }),
       departments: reportDepartments,
+      summary,
     }),
   );
 

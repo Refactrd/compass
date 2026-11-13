@@ -26,7 +26,10 @@ import {
  * Cover, contents, then each department's sections exactly as in its own
  * PDF and result tabs (lib/immersion/pdf/shared.tsx, departmentSections):
  * current workflow, what we found, transformed workflow, recommendations
- * with the 90 day roadmap, so the two documents never drift apart.
+ * with the 90 day roadmap, so the two documents never drift apart. It
+ * closes on the Summary (lib/immersion/comprehensive-summary.ts): a few
+ * paragraphs synthesising the whole engagement, written once all the
+ * department detail has been read.
  */
 
 export type ReportDepartment = {
@@ -41,13 +44,17 @@ export function ComprehensiveReportPdfDocument({
   clientName,
   date,
   departments,
+  summary,
 }: {
   clientName: string;
   date: string;
   departments: ReportDepartment[];
+  /** Two to four paragraphs, already trimmed; split on blank lines. */
+  summary: string;
 }) {
   const departmentScores = departments.map((d) => computeWorkflowScore(d.bottlenecks.length).score);
   const overallScore = computeAverageScore(departmentScores);
+  const summaryParagraphs = summary.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
 
   return (
     <Document>
@@ -111,6 +118,21 @@ export function ComprehensiveReportPdfDocument({
           { clientName, keyPrefix: `dept-${i}` },
         ),
       )}
+
+      {summaryParagraphs.length > 0 ? (
+        <SectionPage clientName={clientName}>
+          <SectionHeader
+            kicker="Summary"
+            title="What this means for the organisation"
+            subtitle="The pattern across every department, and what acting on it gains."
+          />
+          {summaryParagraphs.map((paragraph, i) => (
+            <Text key={`summary-${i}`} style={{ fontSize: 10.5, lineHeight: 1.55, marginTop: i === 0 ? 0 : 10, maxWidth: 620 }}>
+              {paragraph}
+            </Text>
+          ))}
+        </SectionPage>
+      ) : null}
     </Document>
   );
 }

@@ -45,8 +45,11 @@ they were mentioned in the interview. A transcript often circles back or
 clarifies an earlier point later; sequence by the real workflow, not the
 transcript's own order.
 
-label: short and imperative, naming the action, e.g. "Sales rep logs the lead
-in the CRM". Not a sentence about the step, the step itself.
+label: one short sentence, naming the action, e.g. "Sales rep logs the lead
+in the CRM". Not a sentence about the step, the step itself. This renders
+inside a fixed-size flowchart box, so it has to actually be short, under
+roughly 12 words; a longer description belongs in the description field
+below, never folded into the label to avoid writing a second sentence.
 
 actor: who performs it, in the transcript's own words (a role, a title, a
 team name). Null if the transcript never says who does this specific step.

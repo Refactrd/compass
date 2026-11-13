@@ -171,9 +171,12 @@ both are added when this is displayed. For example return "the lead is
 qualified", never "If the lead is qualified" and never "the lead is
 qualified, skip to step 4".
 
+Every step label stays one short sentence, under roughly 12 words, same
+constraint as the original diagram. Move any extra detail from a changed step
+into its description instead of lengthening the label.
+
 Write every label, actor, description, and stage field without em dashes or
-en dashes. Use
-commas or full stops instead. Ordinary hyphens in compound words are fine.
+en dashes. Use commas or full stops instead. Ordinary hyphens in compound words are fine.
 `.trim();
 
 export async function generateAfterDiagram({

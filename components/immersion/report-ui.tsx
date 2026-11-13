@@ -12,8 +12,17 @@ import { refactrdBrand } from "@/brand/token";
  * the result panel and mirror react-pdf templates, which have no Tailwind.
  */
 
-export const { colors, typography } = refactrdBrand;
+export const { colors } = refactrdBrand;
 export const wf = colors.workflow;
+
+/** Compass's own web fonts, not the brand's: Poppins and Montserrat are only
+ * embedded server-side for the PDF (lib/immersion/pdf/shared.tsx), never
+ * loaded in the browser, so naming them here rendered a generic fallback.
+ * Found in a real dry run (master's QA fixes); colours stay Refactrd's. */
+export const typography = {
+  heading: { fontFamily: "var(--font-display)" },
+  body: { fontFamily: "var(--font-sans)" },
+};
 
 export const eyebrow: React.CSSProperties = {
   margin: 0,

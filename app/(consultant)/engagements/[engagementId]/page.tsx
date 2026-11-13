@@ -147,8 +147,8 @@ export default async function EngagementPage({
         <div className="rounded-xl border border-border bg-surface p-4">
           <h2 className="text-sm font-medium text-ink">Comprehensive Report</h2>
           <p className="mt-1 text-xs text-slate">
-            Collates every department: before and after workflows, and a 90
-            day roadmap for each.
+            Collates every department&apos;s before and after workflows, a
+            closing summary, and one 90 day roadmap for the organization.
           </p>
           <div className="mt-3">
             <ComprehensiveReportButton

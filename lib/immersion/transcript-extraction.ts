@@ -70,6 +70,19 @@ when this is displayed. Most departments described in an interview are close
 to linear; an empty branches array is a normal, common, correct result, not a
 failure to try harder.
 
+stages: group the steps into the phases a client would recognise their own
+work by, the way a findings report would present it, for example "Ad
+enquiry", "Filter and route", "Engage and quote", "Customs check". A long
+workflow reads as a handful of stages, not a wall of steps; a typical
+department has four to eight. Each stage is a consecutive run of steps, every
+step belongs to exactly one stage, and stages follow the same order as the
+steps. Give the 1-based position of the first and last step in each.
+title: two to four words naming the phase. summary: one short, plain
+sentence saying what happens in it, in words the client's own team would
+use, for example "China enquiries stay with the central agent. US, UK, Canada
+and export are referred on." With three steps or fewer, one stage per step is
+fine.
+
 Write every label, actor, and description without em dashes or en dashes. Use
 commas or full stops instead. Ordinary hyphens in compound words are fine.
 `.trim();
@@ -98,7 +111,9 @@ this transcript, not starting fresh. The consultant who ran the actual
 interview is telling you something in it is wrong, such as a step that
 never really happens that way, or something real that got left out.
 
-Apply exactly what the consultant's correction says. Keep every other step,
+Apply exactly what the consultant's correction says. If steps are added,
+removed, or moved, regroup the stages so they still cover every step in
+order; otherwise keep the stages as they were. Keep every other step,
 actor, description and branch from the current workflow unchanged, in the
 same order, unless the correction itself implies a reordering. Do not use
 this as a chance to rewrite or polish steps the correction did not mention.
@@ -123,12 +138,18 @@ function describeDiagram(diagram: WorkflowDiagram): string {
     branchesByFromStep.set(branch.fromStepId, list);
   }
   const indexById = new Map(diagram.steps.map((step, i) => [step.id, i + 1]));
+  const stageByFirstStep = new Map(
+    (diagram.stages ?? []).map((stage) => [stage.stepIds[0], stage]),
+  );
 
   return diagram.steps
     .map((step, i) => {
-      const lines = [
-        `${i + 1}. ${step.label}${step.actor ? ` (${step.actor})` : ""}`,
-      ];
+      const lines: string[] = [];
+      const stage = stageByFirstStep.get(step.id);
+      if (stage) {
+        lines.push(`Stage: ${stage.title}${stage.summary ? `. ${stage.summary}` : ""}`);
+      }
+      lines.push(`${i + 1}. ${step.label}${step.actor ? ` (${step.actor})` : ""}`);
       if (step.description) lines.push(`   ${step.description}`);
       for (const branch of branchesByFromStep.get(step.id) ?? []) {
         const target = indexById.get(branch.toStepId) ?? "?";

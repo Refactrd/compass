@@ -6,7 +6,7 @@ import {
   ChevronDown,
   Download,
   FileText,
-  Lightbulb,
+  ListChecks,
   RefreshCw,
   Sparkles,
   Workflow,
@@ -28,18 +28,19 @@ import {
   type OpportunityActionState,
   type PdfActionState,
 } from "@/app/(consultant)/engagements/actions";
-import { BottlenecksView } from "@/components/immersion/bottlenecks-view";
+import { OpportunityMappingView } from "@/components/immersion/opportunity-mapping-view";
+import { RecommendationsView } from "@/components/immersion/recommendations-view";
 import { ResultCard } from "@/components/immersion/result-card";
 import { ResultPanel, type ResultPanelTab } from "@/components/immersion/result-panel";
-import { SolutionsView } from "@/components/immersion/solutions-view";
-import { WorkflowDiagramView } from "@/components/immersion/workflow-diagram";
+import { CurrentWorkflowView, TransformedWorkflowView } from "@/components/immersion/workflow-diagram";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { useActionToast } from "@/components/ui/toast";
 import type { Bottleneck } from "@/lib/immersion/bottleneck-extraction";
 import type { WorkflowDiagram } from "@/lib/immersion/diagram-schema";
 import type { OpportunityMapping } from "@/lib/immersion/opportunity-mapping";
-import { bracketFor, computeWorkflowScore } from "@/lib/immersion/workflow-score";
+import { buildStressViews, readinessScores } from "@/lib/immersion/stage-view";
+import { computeWorkflowScore } from "@/lib/immersion/workflow-score";
 
 function ExtractSubmit({ hasResultAlready }: { hasResultAlready: boolean }) {
   const { pending } = useFormStatus();
@@ -276,21 +277,29 @@ export function DepartmentWorkspace({
     tabs.push({
       id: "before",
       label: "Current workflow",
-      content: <WorkflowDiagramView diagram={diagram} title={`${departmentName}, today`} />,
+      content: (
+        <CurrentWorkflowView
+          diagram={diagram}
+          departmentName={departmentName}
+          bottlenecks={bottlenecks}
+          opportunityMapping={opportunityMapping}
+        />
+      ),
     });
   }
-  if (bottlenecks && diagram) {
+  if (bottlenecks && opportunityMapping && diagram) {
     tabs.push({
-      id: "bottlenecks",
-      label: "Bottlenecks",
-      content: <BottlenecksView bottlenecks={bottlenecks} diagram={diagram} />,
-    });
-  }
-  if (opportunityMapping) {
-    tabs.push({
-      id: "solutions",
-      label: "Recommended Solutions",
-      content: <SolutionsView opportunityMapping={opportunityMapping} />,
+      id: "opportunities",
+      label: "What we found",
+      content: (
+        <OpportunityMappingView
+          bottlenecks={bottlenecks}
+          opportunityMapping={opportunityMapping}
+          diagram={diagram}
+          afterDiagram={afterDiagram}
+          departmentName={departmentName}
+        />
+      ),
     });
   }
   if (afterDiagram && afterDiagram.steps.length > 0) {
@@ -298,14 +307,33 @@ export function DepartmentWorkspace({
       id: "after",
       label: "Transformed workflow",
       content: (
-        <WorkflowDiagramView diagram={afterDiagram} title={`${departmentName}, transformed`} />
+        <TransformedWorkflowView
+          diagram={afterDiagram}
+          before={diagram}
+          departmentName={departmentName}
+          readiness={readinessScores(buildStressViews(opportunityMapping?.findings, afterDiagram))}
+        />
+      ),
+    });
+  }
+  if (opportunityMapping && diagram) {
+    tabs.push({
+      id: "recommendations",
+      label: "Recommendations",
+      content: (
+        <RecommendationsView
+          opportunityMapping={opportunityMapping}
+          diagram={diagram}
+          afterDiagram={afterDiagram}
+          departmentName={departmentName}
+        />
       ),
     });
   }
   if (pdfPath) {
     tabs.push({
       id: "pdf",
-      label: "PDF",
+      label: "Client PDF",
       content: (
         <iframe
           src={`/api/engagements/departments/${departmentId}/pdf`}
@@ -317,7 +345,8 @@ export function DepartmentWorkspace({
   }
 
   // No effect needed to keep activeTabId valid: tabs are only ever additive
-  // as the pipeline progresses (before -> opportunities -> after -> pdf),
+  // as the pipeline progresses (before -> opportunities -> after ->
+  // recommendations -> pdf),
   // never removed, and openPanel() always sets an id from the current tab
   // set, so a stale id here cannot actually happen.
 
@@ -468,21 +497,16 @@ export function DepartmentWorkspace({
         )
       ) : null}
 
-      {bottlenecks && diagram ? (
+      {bottlenecks && opportunityMapping && diagram ? (
         <ResultCard
           icon={Sparkles}
-          title="Bottlenecks found"
-          detail={`${bottlenecks.length} bottleneck${bottlenecks.length === 1 ? "" : "s"} · Workflow health: ${bracketFor(computeWorkflowScore(bottlenecks.length).score).label}`}
-          onClick={() => openPanel("bottlenecks")}
-        />
-      ) : null}
-
-      {opportunityMapping ? (
-        <ResultCard
-          icon={Lightbulb}
-          title="Recommended solutions ready"
-          detail={`${opportunityMapping.solutions.length} grounded solution${opportunityMapping.solutions.length === 1 ? "" : "s"}`}
-          onClick={() => openPanel("solutions")}
+          title="What we found"
+          detail={(() => {
+            const { today } = readinessScores(buildStressViews(opportunityMapping.findings, afterDiagram));
+            const scale = today !== null ? ` · Scale readiness ${today}/100` : "";
+            return `${bottlenecks.length} bottleneck${bottlenecks.length === 1 ? "" : "s"}, ${opportunityMapping.solutions.length} grounded build${opportunityMapping.solutions.length === 1 ? "" : "s"} · Workflow health ${computeWorkflowScore(bottlenecks.length).score}/100${scale}`;
+          })()}
+          onClick={() => openPanel("opportunities")}
         />
       ) : null}
 
@@ -490,8 +514,26 @@ export function DepartmentWorkspace({
         <ResultCard
           icon={ArrowRightLeft}
           title="Transformed workflow ready"
-          detail={`${afterDiagram.steps.length} step${afterDiagram.steps.length === 1 ? "" : "s"} once the solutions are applied`}
+          detail={
+            diagram && diagram.steps.length > afterDiagram.steps.length
+              ? `From ${diagram.steps.length} steps to ${afterDiagram.steps.length} once the solutions are applied`
+              : `${afterDiagram.steps.length} step${afterDiagram.steps.length === 1 ? "" : "s"} once the solutions are applied`
+          }
           onClick={() => openPanel("after")}
+        />
+      ) : null}
+
+      {opportunityMapping && opportunityMapping.solutions.length > 0 ? (
+        <ResultCard
+          icon={ListChecks}
+          title="Recommendations and 90 day roadmap"
+          detail={(["priority", "recommended", "nice-to-have"] as const)
+            .map((tier) => {
+              const count = opportunityMapping.solutions.filter((s) => s.tier === tier).length;
+              return `${count} ${tier === "nice-to-have" ? "nice to have" : tier}`;
+            })
+            .join(" · ")}
+          onClick={() => openPanel("recommendations")}
         />
       ) : null}
 
@@ -547,6 +589,8 @@ export function DepartmentWorkspace({
 
       <ResultPanel
         open={panelOpen && tabs.length > 0}
+        title={departmentName}
+        subtitle="Department results"
         onClose={() => setPanelOpen(false)}
         tabs={tabs}
         activeTabId={activeTabId}

@@ -19,6 +19,8 @@ import type { Solution } from "@/lib/immersion/opportunity-mapping";
 export type RoadmapPhase = {
   label: string;
   rangeDays: string;
+  /** One line on what the phase is for, the subheading under its label. */
+  aim: string;
   solutions: Solution[];
 };
 
@@ -26,18 +28,23 @@ export type Roadmap = {
   phases: RoadmapPhase[];
 };
 
-const PHASES: { tier: Solution["tier"]; label: string; rangeDays: string }[] = [
-  { tier: "priority", label: "Now", rangeDays: "Days 1 to 30" },
-  { tier: "recommended", label: "Next", rangeDays: "Days 31 to 60" },
-  { tier: "nice-to-have", label: "Later", rangeDays: "Days 61 to 90" },
+// Stabilise, Streamline, Scale: the phase names from the approved SA
+// Logistics findings report.
+const PHASES: { tier: Solution["tier"]; label: string; rangeDays: string; aim: string }[] = [
+  { tier: "priority", label: "Stabilise", rangeDays: "Days 1 to 30", aim: "Fix the biggest bottleneck first." },
+  { tier: "recommended", label: "Streamline", rangeDays: "Days 31 to 60", aim: "Stop information being carried by hand." },
+  { tier: "nice-to-have", label: "Scale", rangeDays: "Days 61 to 90", aim: "Extend reach and measure the results." },
 ];
 
+/** Always all three phases, in order, so the roadmap keeps its three-column
+ * shape; a phase with nothing in it is shown as such rather than dropped. */
 export function buildRoadmap(solutions: Solution[]): Roadmap {
   const phases = PHASES.map((phase) => ({
     label: phase.label,
     rangeDays: phase.rangeDays,
+    aim: phase.aim,
     solutions: solutions.filter((solution) => solution.tier === phase.tier),
-  })).filter((phase) => phase.solutions.length > 0);
+  }));
 
   return { phases };
 }

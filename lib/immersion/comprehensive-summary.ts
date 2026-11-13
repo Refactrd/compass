@@ -68,7 +68,7 @@ export async function generateComprehensiveSummary({
   departments: {
     name: string;
     bottlenecks: Bottleneck[];
-    solutions: Solution[];
+    opportunityMapping: { solutions: Solution[] };
   }[];
 }): Promise<string> {
   const block = departments
@@ -76,8 +76,8 @@ export async function generateComprehensiveSummary({
       const bottleneckLines = department.bottlenecks.length
         ? department.bottlenecks.map((b) => `  - ${b.description}`).join("\n")
         : "  - None identified.";
-      const solutionLines = department.solutions.length
-        ? department.solutions
+      const solutionLines = department.opportunityMapping.solutions.length
+        ? department.opportunityMapping.solutions
             .map((s) => {
               const timeSaved = s.timeSavedEstimate ? `, estimated time saved: ${s.timeSavedEstimate}` : "";
               return `  - [${s.tier}] ${s.title}: ${s.rationale}${timeSaved}`;

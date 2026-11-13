@@ -34,12 +34,68 @@ export type WorkflowBranch = {
   toStepId: string;
 };
 
+/** How a workflow fares under a stress scenario (see bottleneck-extraction's
+ * StressScenario): it stops working, it slows and strains, or it holds. */
+export type StressOutcome = "breaks" | "strains" | "holds";
+
+/** The transformed workflow's answer to one stress scenario. */
+export type ScenarioResult = {
+  scenarioId: string;
+  outcome: StressOutcome;
+  /** Which build or human checkpoint absorbs the shock, in one sentence. */
+  how: string | null;
+};
+
+/** How a transformed stage is carried out. Only set on the "after" diagram. */
+export type StageMode = "automated" | "people" | "unchanged";
+
+/**
+ * A named group of consecutive steps, the unit both diagrams are actually
+ * drawn in (the SA Logistics findings report is the reference: 17 steps read
+ * as eight stages a client recognises, not seventeen boxes). Stages are
+ * always contiguous ranges of steps in order, so grouping never reorders
+ * anything and the fixed template still never computes a position.
+ */
+export type WorkflowStage = {
+  /** "stage-1", "stage-2", ... assigned by normalisation, not the model. */
+  id: string;
+  /** Two to four words. "Filter and route". */
+  title: string;
+  /** One short sentence (before) or two to three (after). */
+  summary: string | null;
+  stepIds: string[];
+  /** After diagram only. */
+  mode?: StageMode;
+  /** After diagram only: who does the stage now, one or two words. "Assistant". */
+  tag?: string | null;
+  /** After diagram only: the manual work this stage replaces. */
+  replaces?: string | null;
+  /** After diagram only: titles of the proposed builds that power this stage. */
+  builds?: string[];
+  /** After diagram only: the critical decision a person still owns here,
+   * the human in the loop. Null where the stage needs none. */
+  humanCheckpoint?: string | null;
+};
+
 export type WorkflowDiagram = {
   steps: WorkflowStep[];
   /** Deviations from the default steps[i] -> steps[i+1] sequence: a fork, a
    * skip, or a loop back. Empty for a fully linear workflow. */
   branches: WorkflowBranch[];
+  /** Optional: diagrams saved before stages existed have none, and stagesOf()
+   * falls back to one stage per step for them. */
+  stages?: WorkflowStage[];
+  /** After diagram only: how the transformed workflow holds up under each
+   * stress scenario from the "What we found" stress test. */
+  resilience?: ScenarioResult[];
 };
+
+const STAGE_BASE_PROPERTIES = {
+  title: { type: "string" },
+  summary: { type: ["string", "null"] },
+  startStepIndex: { type: "integer" },
+  endStepIndex: { type: "integer" },
+} as const;
 
 /** Anthropic structured-output schema. See lib/ai/extraction.ts for why this
  * shape (no maxItems on arrays, no free-form ids): the model is asked for
@@ -75,9 +131,66 @@ export const WORKFLOW_EXTRACTION_SCHEMA = {
         additionalProperties: false,
       },
     },
+    stages: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: STAGE_BASE_PROPERTIES,
+        required: ["title", "summary", "startStepIndex", "endStepIndex"],
+        additionalProperties: false,
+      },
+    },
   },
-  required: ["steps", "branches"],
+  required: ["steps", "branches", "stages"],
   additionalProperties: false,
+} as const;
+
+/** Same shape plus the transformed-stage fields the "after" diagram needs. */
+export const AFTER_WORKFLOW_SCHEMA = {
+  ...WORKFLOW_EXTRACTION_SCHEMA,
+  properties: {
+    ...WORKFLOW_EXTRACTION_SCHEMA.properties,
+    stages: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          ...STAGE_BASE_PROPERTIES,
+          mode: { type: "string", enum: ["automated", "people", "unchanged"] },
+          tag: { type: "string" },
+          replaces: { type: ["string", "null"] },
+          solutionIndexes: { type: "array", items: { type: "integer" } },
+          humanCheckpoint: { type: ["string", "null"] },
+        },
+        required: [
+          "title",
+          "summary",
+          "startStepIndex",
+          "endStepIndex",
+          "mode",
+          "tag",
+          "replaces",
+          "solutionIndexes",
+          "humanCheckpoint",
+        ],
+        additionalProperties: false,
+      },
+    },
+    stressTests: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          scenarioIndex: { type: "integer" },
+          outcome: { type: "string", enum: ["breaks", "strains", "holds"] },
+          how: { type: ["string", "null"] },
+        },
+        required: ["scenarioIndex", "outcome", "how"],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: [...WORKFLOW_EXTRACTION_SCHEMA.required, "stressTests"],
 } as const;
 
 export type RawWorkflowStep = {
@@ -92,9 +205,24 @@ export type RawWorkflowBranch = {
   toStepIndex: number;
 };
 
+export type RawWorkflowStage = {
+  title: string;
+  summary: string | null;
+  startStepIndex: number;
+  endStepIndex: number;
+  mode?: string;
+  tag?: string;
+  replaces?: string | null;
+  /** Resolved from solutionIndexes by the after-diagram generator before
+   * normalisation, since only it knows the solution list. */
+  builds?: string[];
+  humanCheckpoint?: string | null;
+};
+
 export type RawWorkflowDiagram = {
   steps: RawWorkflowStep[];
   branches: RawWorkflowBranch[];
+  stages?: RawWorkflowStage[];
 };
 
 /**
@@ -159,7 +287,96 @@ export function normalizeWorkflow(parsed: RawWorkflowDiagram): WorkflowDiagram {
     })
     .filter((branch): branch is WorkflowBranch => branch !== null);
 
-  return { steps, branches };
+  const stages = normalizeStages(parsed.stages, rawSteps.length, steps);
+
+  return stages.length > 0 ? { steps, branches, stages } : { steps, branches };
+}
+
+/**
+ * Only each stage's start index is trusted. Sorting by start and ending each
+ * stage where the next begins always yields contiguous, non-overlapping
+ * ranges that cover every step, whatever the model did with endStepIndex, so
+ * a gap or overlap can never drop or duplicate a step on the diagram.
+ */
+function normalizeStages(
+  rawStages: RawWorkflowStage[] | undefined,
+  rawStepCount: number,
+  steps: WorkflowStep[],
+): WorkflowStage[] {
+  if (!Array.isArray(rawStages) || steps.length === 0) return [];
+  const existing = new Set(steps.map((step) => step.id));
+
+  const starts = rawStages
+    .map((stage) => ({ stage, start: stage?.startStepIndex }))
+    .filter(
+      (item): item is { stage: RawWorkflowStage; start: number } =>
+        typeof item.start === "number" &&
+        Number.isInteger(item.start) &&
+        item.start >= 1 &&
+        item.start <= rawStepCount &&
+        !!cleanWorkflowText(item.stage?.title, 80),
+    )
+    .sort((a, b) => a.start - b.start)
+    .filter((item, i, all) => i === 0 || item.start !== all[i - 1].start);
+
+  if (starts.length === 0) return [];
+  starts[0] = { ...starts[0], start: 1 };
+
+  return starts
+    .map(({ stage, start }, i): WorkflowStage | null => {
+      const end = i + 1 < starts.length ? starts[i + 1].start - 1 : rawStepCount;
+      const stepIds: string[] = [];
+      for (let n = start; n <= end; n++) {
+        if (existing.has(`step-${n}`)) stepIds.push(`step-${n}`);
+      }
+      if (stepIds.length === 0) return null;
+      const mode =
+        stage.mode === "automated" || stage.mode === "people" || stage.mode === "unchanged"
+          ? stage.mode
+          : undefined;
+      return {
+        id: `stage-${i + 1}`,
+        title: cleanWorkflowText(stage.title, 80)!,
+        summary: cleanWorkflowText(stage.summary, mode ? 450 : 220),
+        stepIds,
+        ...(mode
+          ? {
+              mode,
+              tag: cleanWorkflowText(stage.tag, 30),
+              replaces: cleanWorkflowText(stage.replaces, 220),
+              builds: (Array.isArray(stage.builds) ? stage.builds : [])
+                .map((title) => cleanWorkflowText(title, 150))
+                .filter((title): title is string => !!title),
+              humanCheckpoint: cleanWorkflowText(stage.humanCheckpoint, 220),
+            }
+          : {}),
+      };
+    })
+    .filter((stage): stage is WorkflowStage => stage !== null)
+    .map((stage, i) => ({ ...stage, id: `stage-${i + 1}` }));
+}
+
+/** The stages to draw: the extracted ones, or one stage per step for a
+ * diagram saved before stages existed. */
+export function stagesOf(diagram: WorkflowDiagram): WorkflowStage[] {
+  if (diagram.stages && diagram.stages.length > 0) return diagram.stages;
+  return diagram.steps.map((step, i) => ({
+    id: `stage-${i + 1}`,
+    title: step.label,
+    summary: step.description,
+    stepIds: [step.id],
+  }));
+}
+
+/** "Step 4" or "Steps 4 to 6", numbered by position in the diagram. */
+export function stepRangeLabel(diagram: WorkflowDiagram, stage: WorkflowStage): string {
+  const positions = stage.stepIds
+    .map((id) => diagram.steps.findIndex((step) => step.id === id) + 1)
+    .filter((n) => n > 0);
+  if (positions.length === 0) return "";
+  const first = Math.min(...positions);
+  const last = Math.max(...positions);
+  return first === last ? `Step ${first}` : `Steps ${first} to ${last}`;
 }
 
 /** 1-based model index -> "step-N" id, or null if out of range (dropped

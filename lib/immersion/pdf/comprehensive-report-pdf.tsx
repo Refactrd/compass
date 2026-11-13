@@ -1,15 +1,16 @@
-import { Document, Page, Text, View } from "@react-pdf/renderer";
+import { Document, Text, View } from "@react-pdf/renderer";
 
+import type { Bottleneck } from "@/lib/immersion/bottleneck-extraction";
 import type { WorkflowDiagram } from "@/lib/immersion/diagram-schema";
-import { buildRoadmap } from "@/lib/immersion/roadmap";
-import type { Solution } from "@/lib/immersion/opportunity-mapping";
+import type { OpportunityMapping } from "@/lib/immersion/opportunity-mapping";
 import {
-  DiagramSection,
-  pdfStyles,
-  ReportFooter,
-  ReportLogo,
-  TIER_LABEL,
+  colors,
+  CoverPage,
+  departmentSections,
+  SectionHeader,
+  SectionPage,
 } from "@/lib/immersion/pdf/shared";
+import { buildStressViews, readinessScores } from "@/lib/immersion/stage-view";
 import {
   computeAverageScore,
   computeWorkflowScore,
@@ -22,21 +23,18 @@ import {
  * department plus a 90-day roadmap per department, exactly what CLAUDE.md's
  * "Data model additions" names as this artifact's content.
  *
- * Deliberately condensed where the department-level PDF is already
- * thorough: solution rationale and grounding both live in that document, one
- * per department, so this report shows each solution as a title and its
- * time-saved figure only, sequenced into its roadmap phase. Repeating full
- * rationale for every solution across every department here would make a
- * report meant to be read start to finish unreadable, and the detail has
- * not gone away, it is one click away in the department's own PDF.
+ * Cover, contents, then each department's sections exactly as in its own
+ * PDF and result tabs (lib/immersion/pdf/shared.tsx, departmentSections):
+ * current workflow, what we found, transformed workflow, recommendations
+ * with the 90 day roadmap, so the two documents never drift apart.
  */
 
 export type ReportDepartment = {
   name: string;
   beforeDiagram: WorkflowDiagram;
   afterDiagram: WorkflowDiagram;
-  solutions: Solution[];
-  bottleneckCount: number;
+  bottlenecks: Bottleneck[];
+  opportunityMapping: OpportunityMapping;
 };
 
 export function ComprehensiveReportPdfDocument({
@@ -48,103 +46,71 @@ export function ComprehensiveReportPdfDocument({
   date: string;
   departments: ReportDepartment[];
 }) {
-  const departmentScores = departments.map((d) => computeWorkflowScore(d.bottleneckCount).score);
+  const departmentScores = departments.map((d) => computeWorkflowScore(d.bottlenecks.length).score);
   const overallScore = computeAverageScore(departmentScores);
 
   return (
     <Document>
-      <Page size="A4" style={pdfStyles.page}>
-        <ReportLogo />
-        <Text style={pdfStyles.h1}>Comprehensive Report</Text>
-        <Text style={pdfStyles.meta}>{`${clientName} · ${date}`}</Text>
+      <CoverPage
+        label="BUSINESS IMMERSION FINDINGS"
+        title={clientName}
+        subtitle="Workflow findings and transformation plan"
+        lead="Where each department's work is today, what we found when we pushed on it, how it runs once transformed, and the order we propose to build it in."
+        clientName={clientName}
+        date={date}
+      />
 
-        <View style={pdfStyles.phaseBlock} wrap={false}>
-          <Text style={pdfStyles.h3}>
-            {`Overall workflow health: ${overallScore}/100 (${scoreLabel(overallScore)})`}
-          </Text>
-          <Text style={{ fontSize: 9, opacity: 0.7, marginTop: 2 }}>
-            The mean of each department&apos;s own score below, each 100 minus
-            15 per bottleneck identified during that department&apos;s
-            interview. A computed indicator, not a measured or sourced figure.
-          </Text>
-        </View>
-
-        <Text style={pdfStyles.h2}>Departments covered</Text>
+      <SectionPage clientName={clientName}>
+        <SectionHeader
+          kicker="Contents"
+          title="Inside this report"
+          subtitle={`Overall workflow health ${overallScore}/100 (${scoreLabel(overallScore)}), the mean of each department's score: 100 minus 15 per bottleneck identified. A computed indicator, not a measured figure.`}
+          stats={[{ label: departments.length === 1 ? "department" : "departments", value: String(departments.length) }]}
+        />
         {departments.map((department, i) => {
-          const { score } = computeWorkflowScore(department.bottleneckCount);
+          const { score } = computeWorkflowScore(department.bottlenecks.length);
+          const { today, after } = readinessScores(
+            buildStressViews(department.opportunityMapping.findings, department.afterDiagram),
+          );
+          const builds = department.opportunityMapping.solutions.length;
+          const scale = today !== null ? `, scale readiness ${today}/100${after !== null ? ` to ${after}/100` : ""}` : "";
           return (
-            <Text
+            <View
               key={`toc-${i}`}
-              style={pdfStyles.tocEntry}
-            >{`${i + 1}. ${department.name} — health ${score}/100`}</Text>
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                borderBottomWidth: 1,
+                borderBottomColor: colors.workflow.stageBorder,
+                paddingVertical: 12,
+              }}
+            >
+              <Text style={{ width: 56, fontSize: 18, fontFamily: "Poppins", fontWeight: 700, color: colors.accent }}>
+                {String(i + 1).padStart(2, "0")}
+              </Text>
+              <View style={{ flexGrow: 1, flexBasis: 0 }}>
+                <Text style={{ fontSize: 13, fontFamily: "Poppins", fontWeight: 700 }}>{department.name}</Text>
+                <Text style={{ fontSize: 8.5, color: colors.workflow.muted, marginTop: 2 }}>
+                  {`${department.bottlenecks.length} bottleneck${department.bottlenecks.length === 1 ? "" : "s"}, ${builds} recommended build${builds === 1 ? "" : "s"}, workflow health ${score}/100${scale}.`}
+                </Text>
+              </View>
+            </View>
           );
         })}
+      </SectionPage>
 
-        <ReportFooter clientName={clientName} />
-      </Page>
-
-      {departments.map((department, deptIndex) => {
-        const roadmap = buildRoadmap(department.solutions);
-        const prefix = `dept-${deptIndex}`;
-        const { score } = computeWorkflowScore(department.bottleneckCount);
-
-        return (
-          <Page key={prefix} size="A4" style={pdfStyles.page} wrap>
-            <Text style={pdfStyles.h1}>{department.name}</Text>
-            <Text style={pdfStyles.meta}>
-              {`Workflow health score: ${score}/100 (${scoreLabel(score)})`}
-            </Text>
-
-            <DiagramSection
-              title="Current workflow"
-              diagram={department.beforeDiagram}
-              keyPrefix={`${prefix}-before`}
-            />
-            <DiagramSection
-              title="Transformed workflow"
-              diagram={department.afterDiagram}
-              keyPrefix={`${prefix}-after`}
-            />
-
-            <Text style={pdfStyles.h2}>90 day roadmap</Text>
-            {roadmap.phases.length === 0 ? (
-              <Text style={{ fontSize: 9, opacity: 0.6 }}>
-                No grounded solutions to sequence for this department.
-              </Text>
-            ) : (
-              roadmap.phases.map((phase, phaseIndex) => (
-                <View
-                  key={`${prefix}-phase-${phaseIndex}`}
-                  style={pdfStyles.phaseBlock}
-                  wrap={false}
-                >
-                  <Text style={pdfStyles.phaseLabel}>{`${phase.label}, ${phase.rangeDays}`}</Text>
-                  {phase.solutions.map((solution, solutionIndex) => {
-                    // One pre-built string, not nested/multiple <Text>
-                    // children: the exact shape (several children in one
-                    // paginated Text) that produced duplicated output
-                    // elsewhere in this PDF pipeline. Sacrifices inline bold
-                    // styling for reliability, a trade worth making twice.
-                    const text = solution.timeSavedEstimate
-                      ? `${TIER_LABEL[solution.tier]}: ${solution.title}. Estimated time saved: ${solution.timeSavedEstimate}.`
-                      : `${TIER_LABEL[solution.tier]}: ${solution.title}.`;
-                    return (
-                      <Text
-                        key={`${prefix}-phase-${phaseIndex}-solution-${solutionIndex}`}
-                        style={pdfStyles.roadmapItem}
-                      >
-                        {text}
-                      </Text>
-                    );
-                  })}
-                </View>
-              ))
-            )}
-
-            <ReportFooter clientName={clientName} />
-          </Page>
-        );
-      })}
+      {departments.flatMap((department, i) =>
+        departmentSections(
+          {
+            departmentName: department.name,
+            beforeDiagram: department.beforeDiagram,
+            afterDiagram: department.afterDiagram,
+            bottlenecks: department.bottlenecks,
+            opportunityMapping: department.opportunityMapping,
+          },
+          { clientName, keyPrefix: `dept-${i}` },
+        ),
+      )}
     </Document>
   );
 }

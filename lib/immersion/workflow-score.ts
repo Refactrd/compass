@@ -52,3 +52,29 @@ export function scoreLabel(score: number): string {
   if (score >= 35) return "Strained";
   return "Critical";
 }
+
+/**
+ * Scale readiness: how well a workflow copes under the stress test (a key
+ * person leaving, demand surging, records lost, a dependency failing). Same
+ * one-sentence transparency as the health score: 100, minus 25 for each
+ * scenario where the workflow breaks and 10 for each where it strains. The
+ * scenarios themselves are grounded in the transcript; this only counts
+ * them. Null when there are no scenarios to score, never a default number.
+ */
+const POINTS_PER_BREAK = 25;
+const POINTS_PER_STRAIN = 10;
+
+export function computeScaleReadiness(
+  outcomes: ("breaks" | "strains" | "holds")[],
+): number | null {
+  if (outcomes.length === 0) return null;
+  const penalty = outcomes.reduce(
+    (total, outcome) =>
+      total + (outcome === "breaks" ? POINTS_PER_BREAK : outcome === "strains" ? POINTS_PER_STRAIN : 0),
+    0,
+  );
+  return Math.max(0, 100 - penalty);
+}
+
+export const SCALE_READINESS_RULE =
+  "100, minus 25 for each stress scenario the workflow breaks under and 10 for each it strains under.";

@@ -13,6 +13,13 @@ export type ResultPanelTab = {
 };
 
 /**
+ * The tab bar reads as the story of the department, in order: where they
+ * are, what we found, where they are going, what we recommend, the PDF.
+ * Numbered so the sequence is obvious at a glance, with one animated
+ * underline marking the active tab rather than a filled pill per tab.
+ */
+
+/**
  * The artifact-style side panel: results dock on the right instead of
  * stacking inline and pushing the page to an unscrollable height, the
  * problem a real day 12 dry run surfaced directly. Docked at a fixed width
@@ -30,12 +37,17 @@ export function ResultPanel({
   tabs,
   activeTabId,
   onTabChange,
+  title,
+  subtitle,
 }: {
   open: boolean;
   onClose: () => void;
   tabs: ResultPanelTab[];
   activeTabId: string;
   onTabChange: (id: string) => void;
+  /** The department name, shown above the tabs. */
+  title?: string;
+  subtitle?: string;
 }) {
   const [expanded, setExpanded] = useState(false);
   const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? tabs[0];
@@ -56,7 +68,7 @@ export function ResultPanel({
             key="panel"
             className={cn(
               "fixed inset-y-0 right-0 z-50 flex flex-col border-l border-border bg-surface shadow-raised",
-              "w-full sm:w-[min(560px,90vw)]",
+              "w-full sm:w-[min(640px,92vw)]",
               // Full viewport width, over the sidebar too, not stopping at
               // its edge: a real dry run expected "expand" to mean "give me
               // the whole screen," and this is a fixed overlay (z-50)
@@ -68,47 +80,83 @@ export function ResultPanel({
             exit={{ x: "100%" }}
             transition={{ type: "spring", damping: 32, stiffness: 320 }}
           >
-            <div className="flex items-center gap-1 border-b border-border px-3 py-2.5">
-              <div className="flex flex-1 items-center gap-1 overflow-x-auto">
-                {tabs.map((tab) => (
-                  <button
-                    key={tab.id}
-                    type="button"
-                    onClick={() => onTabChange(tab.id)}
-                    className={cn(
-                      "shrink-0 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors",
-                      tab.id === activeTabId
-                        ? "bg-brass-tint text-brass-strong"
-                        : "text-slate hover:bg-surface-sunken hover:text-ink",
-                    )}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
+            <div className="border-b border-border bg-surface">
+              <div className="flex items-start gap-2 px-5 pt-4">
+                <div className="min-w-0 flex-1">
+                  {subtitle ? (
+                    <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-slate">
+                      {subtitle}
+                    </p>
+                  ) : null}
+                  {title ? (
+                    <p className="truncate font-display text-lg font-semibold text-ink">{title}</p>
+                  ) : null}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setExpanded((current) => !current)}
+                  aria-label={expanded ? "Shrink panel" : "Expand panel"}
+                  className="hidden shrink-0 rounded-md p-2 text-slate transition-colors hover:bg-surface-sunken hover:text-ink sm:block"
+                >
+                  {expanded ? (
+                    <Minimize2 className="h-4 w-4" aria-hidden="true" />
+                  ) : (
+                    <Maximize2 className="h-4 w-4" aria-hidden="true" />
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  aria-label="Close panel"
+                  className="shrink-0 rounded-md p-2 text-slate transition-colors hover:bg-surface-sunken hover:text-ink"
+                >
+                  <X className="h-4 w-4" aria-hidden="true" />
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => setExpanded((current) => !current)}
-                aria-label={expanded ? "Shrink panel" : "Expand panel"}
-                className="hidden shrink-0 rounded-md p-1.5 text-slate hover:bg-surface-sunken hover:text-ink sm:block"
+              <div
+                role="tablist"
+                aria-label="Department results"
+                className="mt-2 flex gap-1 overflow-x-auto px-3 [scrollbar-width:none]"
               >
-                {expanded ? (
-                  <Minimize2 className="h-3.5 w-3.5" aria-hidden="true" />
-                ) : (
-                  <Maximize2 className="h-3.5 w-3.5" aria-hidden="true" />
-                )}
-              </button>
-              <button
-                type="button"
-                onClick={onClose}
-                aria-label="Close panel"
-                className="shrink-0 rounded-md p-1.5 text-slate hover:bg-surface-sunken hover:text-ink"
-              >
-                <X className="h-4 w-4" aria-hidden="true" />
-              </button>
+                {tabs.map((tab, index) => {
+                  const active = tab.id === activeTabId;
+                  return (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      role="tab"
+                      aria-selected={active}
+                      onClick={() => onTabChange(tab.id)}
+                      className={cn(
+                        "relative flex shrink-0 items-center gap-2 rounded-t-md px-3 pb-3 pt-2 text-[13px] font-medium transition-colors",
+                        active ? "text-ink" : "text-slate hover:text-ink",
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          "flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-semibold tabular-nums transition-colors",
+                          active ? "bg-ink text-white" : "bg-surface-sunken text-slate",
+                        )}
+                      >
+                        {index + 1}
+                      </span>
+                      {tab.label}
+                      {active ? (
+                        <motion.span
+                          layoutId="result-panel-tab-underline"
+                          className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-brass"
+                          transition={{ type: "spring", damping: 30, stiffness: 380 }}
+                        />
+                      ) : null}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto">{activeTab?.content}</div>
+            <div role="tabpanel" className="flex-1 overflow-y-auto bg-[#fbfbfb]">
+              {activeTab?.content}
+            </div>
           </motion.div>
         </>
       ) : null}

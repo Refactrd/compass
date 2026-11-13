@@ -217,22 +217,26 @@ export async function generateDepartmentOpportunities(
   const diagram = department.before_diagram as unknown as WorkflowDiagram;
 
   try {
-    const bottlenecks = await extractBottlenecks({
+    const { bottlenecks, findings } = await extractBottlenecks({
       supabase,
       transcript: department.transcript,
       diagram,
     });
 
-    const opportunityMapping = await generateOpportunityMapping({
-      supabase,
-      transcript: department.transcript,
-      diagram,
-      bottlenecks,
-    });
+    const opportunityMapping = {
+      ...(await generateOpportunityMapping({
+        supabase,
+        transcript: department.transcript,
+        diagram,
+        bottlenecks,
+      })),
+      findings,
+    };
 
     const afterDiagram = await generateAfterDiagram({
       before: diagram,
       solutions: opportunityMapping.solutions,
+      scenarios: findings.scenarios,
     });
 
     const { error } = await supabase
@@ -571,8 +575,8 @@ export async function generateComprehensiveReport(
     name: department.name,
     beforeDiagram: department.before_diagram as unknown as WorkflowDiagram,
     afterDiagram: department.after_diagram as unknown as WorkflowDiagram,
-    solutions: (department.opportunity_mapping as unknown as OpportunityMapping).solutions,
-    bottleneckCount: ((department.bottlenecks as unknown as Bottleneck[] | null) ?? []).length,
+    bottlenecks: (department.bottlenecks as unknown as Bottleneck[] | null) ?? [],
+    opportunityMapping: department.opportunity_mapping as unknown as OpportunityMapping,
   }));
 
   const { renderToBuffer } = await import("@react-pdf/renderer");

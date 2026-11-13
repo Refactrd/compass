@@ -1,26 +1,16 @@
-import { Document, Page, Text, View } from "@react-pdf/renderer";
+import { Document } from "@react-pdf/renderer";
 
 import type { Bottleneck } from "@/lib/immersion/bottleneck-extraction";
 import type { WorkflowDiagram } from "@/lib/immersion/diagram-schema";
 import type { OpportunityMapping } from "@/lib/immersion/opportunity-mapping";
-import {
-  DiagramSection,
-  pdfStyles,
-  ReportFooter,
-  ReportLogo,
-  TIER_LABEL,
-} from "@/lib/immersion/pdf/shared";
-import { computeWorkflowScore, scoreLabel } from "@/lib/immersion/workflow-score";
+import { CoverPage, departmentSections } from "@/lib/immersion/pdf/shared";
 
 /**
  * The client-facing department PDF. Refactrd's real brand, not Compass's own
- * (CLAUDE.md, Phase 2 non-negotiable) — same colors as
- * components/immersion/workflow-diagram.tsx, but a parallel implementation:
- * react-pdf renders through its own View/Text/Image primitives, not regular
- * DOM/HTML, so the on-screen component cannot be reused directly. Both read
- * the same WorkflowDiagram data and the same brand/token.ts values, which is
- * what keeps them "one deliberately designed template" in the sense that
- * matters, one visual design, rather than one literal React component.
+ * (CLAUDE.md, Phase 2 non-negotiable): the cover, then the department's
+ * sections in the same order and layout as its result tabs, current
+ * workflow, what we found, transformed workflow, recommendations with the 90
+ * day roadmap (lib/immersion/pdf/shared.tsx, departmentSections).
  *
  * Typography: real Refactrd fonts, registered in shared.tsx from
  * @fontsource/poppins and @fontsource/montserrat. Codec Pro itself stays
@@ -28,10 +18,10 @@ import { computeWorkflowScore, scoreLabel } from "@/lib/immersion/workflow-score
  * guideline's own documented fallback for that case, Poppins for headings,
  * rather than collapsing everything onto the body font.
  *
- * Grounding chips (see components/immersion/opportunity-mapping-view.tsx)
- * are deliberately not shown here: they are the consultant's own
- * verification surface before a document goes to a client, not something a
- * prospective client should see in the deliverable itself.
+ * Evidence and grounding (see the result tabs) are deliberately not shown
+ * here: they are the consultant's own verification surface before a
+ * document goes to a client, not something a prospective client should see
+ * in the deliverable itself.
  */
 
 export function DepartmentPdfDocument({
@@ -51,62 +41,20 @@ export function DepartmentPdfDocument({
   opportunityMapping: OpportunityMapping;
   afterDiagram: WorkflowDiagram;
 }) {
-  const stepLabel = (stepId: string) =>
-    beforeDiagram.steps.find((step) => step.id === stepId)?.label ?? stepId;
-
   return (
     <Document>
-      <Page size="A4" style={pdfStyles.page}>
-        <ReportLogo />
-        <Text style={pdfStyles.h1}>{departmentName}</Text>
-        <Text style={pdfStyles.meta}>{`${clientName} · Opportunity Mapping · ${date}`}</Text>
-
-        <DiagramSection title="Current workflow" diagram={beforeDiagram} keyPrefix="before" />
-
-        <Text style={pdfStyles.h2}>Bottlenecks identified</Text>
-        <Text style={pdfStyles.meta}>
-          {`Workflow health score: ${computeWorkflowScore(bottlenecks.length).score}/100 (${scoreLabel(computeWorkflowScore(bottlenecks.length).score)}). 100, minus 15 per bottleneck identified during the interview.`}
-        </Text>
-        {bottlenecks.length === 0 ? (
-          <Text style={{ fontSize: 9, opacity: 0.6 }}>None identified from this interview.</Text>
-        ) : (
-          bottlenecks.map((bottleneck, i) => (
-            <View key={`bottleneck-${i}`} style={pdfStyles.bottleneckCard} wrap={false}>
-              <Text style={pdfStyles.bottleneckStep}>{stepLabel(bottleneck.stepId)}</Text>
-              <Text style={pdfStyles.bottleneckDescription}>{bottleneck.description}</Text>
-            </View>
-          ))
-        )}
-      </Page>
-
-      <Page size="A4" style={pdfStyles.page}>
-        <Text style={pdfStyles.h2}>Recommended solutions</Text>
-        {opportunityMapping.solutions.length === 0 ? (
-          <Text style={{ fontSize: 9, opacity: 0.6 }}>
-            No solutions could be grounded from the material available.
-          </Text>
-        ) : (
-          opportunityMapping.solutions.map((solution, i) => (
-            <View key={`solution-${i}`} style={pdfStyles.solutionCard} wrap={false}>
-              <Text style={pdfStyles.tierBadge}>{TIER_LABEL[solution.tier]}</Text>
-              <Text style={pdfStyles.solutionTitle}>{solution.title}</Text>
-              <Text style={pdfStyles.solutionRationale}>{solution.rationale}</Text>
-              {solution.timeSavedEstimate ? (
-                <Text
-                  style={pdfStyles.timeSaved}
-                >{`Estimated time saved: ${solution.timeSavedEstimate}`}</Text>
-              ) : null}
-            </View>
-          ))
-        )}
-
-        <ReportFooter clientName={clientName} />
-      </Page>
-
-      <Page size="A4" style={pdfStyles.page}>
-        <DiagramSection title="Transformed workflow" diagram={afterDiagram} keyPrefix="after" />
-        <ReportFooter clientName={clientName} />
-      </Page>
+      <CoverPage
+        label="OPPORTUNITY MAPPING"
+        title={clientName}
+        subtitle={departmentName}
+        lead="Where this department's work is today, what we found when we pushed on it, how it runs once transformed, and what we recommend building first."
+        clientName={clientName}
+        date={date}
+      />
+      {departmentSections(
+        { departmentName, beforeDiagram, afterDiagram, bottlenecks, opportunityMapping },
+        { clientName, keyPrefix: "dept" },
+      )}
     </Document>
   );
 }

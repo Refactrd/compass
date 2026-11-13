@@ -41,6 +41,22 @@ export const refactrdBrand = {
     background: "#fbfbfb", // White — 4th
     text: "#000000", // Black — 5th
     accent: "#0e5d7d", // Dark Azure — 6th
+    // Workflow card colours, not in the guideline itself: taken from the
+    // approved SA Logistics findings report, which set the pattern every
+    // current/transformed workflow follows. Amber marks a bottleneck, an
+    // azure tint marks an opportunity.
+    workflow: {
+      bottleneckFill: "#f3dfb0",
+      bottleneckEdge: "#c9a04c",
+      bottleneckInk: "#5c4718",
+      bottleneckLabel: "#7a5c1e",
+      opportunityFill: "#deedfc",
+      // Stress test outcomes: deep amber when the workflow breaks, the
+      // bottleneck amber when it strains, Dark Azure when it holds.
+      breaks: "#7a5c1e",
+      stageBorder: "#cfd6e2",
+      muted: "#4a5468",
+    },
   },
 
   typography: {

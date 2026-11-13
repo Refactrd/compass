@@ -6,6 +6,7 @@ import {
   ChevronDown,
   Download,
   FileText,
+  ListChecks,
   RefreshCw,
   Sparkles,
   Workflow,
@@ -28,15 +29,17 @@ import {
   type PdfActionState,
 } from "@/app/(consultant)/engagements/actions";
 import { OpportunityMappingView } from "@/components/immersion/opportunity-mapping-view";
+import { RecommendationsView } from "@/components/immersion/recommendations-view";
 import { ResultCard } from "@/components/immersion/result-card";
 import { ResultPanel, type ResultPanelTab } from "@/components/immersion/result-panel";
-import { WorkflowDiagramView } from "@/components/immersion/workflow-diagram";
+import { CurrentWorkflowView, TransformedWorkflowView } from "@/components/immersion/workflow-diagram";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { useActionToast } from "@/components/ui/toast";
 import type { Bottleneck } from "@/lib/immersion/bottleneck-extraction";
 import type { WorkflowDiagram } from "@/lib/immersion/diagram-schema";
 import type { OpportunityMapping } from "@/lib/immersion/opportunity-mapping";
+import { buildStressViews, readinessScores } from "@/lib/immersion/stage-view";
 import { computeWorkflowScore } from "@/lib/immersion/workflow-score";
 
 function ExtractSubmit({ hasResultAlready }: { hasResultAlready: boolean }) {
@@ -274,18 +277,27 @@ export function DepartmentWorkspace({
     tabs.push({
       id: "before",
       label: "Current workflow",
-      content: <WorkflowDiagramView diagram={diagram} title={`${departmentName}, today`} />,
+      content: (
+        <CurrentWorkflowView
+          diagram={diagram}
+          departmentName={departmentName}
+          bottlenecks={bottlenecks}
+          opportunityMapping={opportunityMapping}
+        />
+      ),
     });
   }
   if (bottlenecks && opportunityMapping && diagram) {
     tabs.push({
       id: "opportunities",
-      label: "Bottlenecks & solutions",
+      label: "What we found",
       content: (
         <OpportunityMappingView
           bottlenecks={bottlenecks}
           opportunityMapping={opportunityMapping}
           diagram={diagram}
+          afterDiagram={afterDiagram}
+          departmentName={departmentName}
         />
       ),
     });
@@ -295,14 +307,33 @@ export function DepartmentWorkspace({
       id: "after",
       label: "Transformed workflow",
       content: (
-        <WorkflowDiagramView diagram={afterDiagram} title={`${departmentName}, transformed`} />
+        <TransformedWorkflowView
+          diagram={afterDiagram}
+          before={diagram}
+          departmentName={departmentName}
+          readiness={readinessScores(buildStressViews(opportunityMapping?.findings, afterDiagram))}
+        />
+      ),
+    });
+  }
+  if (opportunityMapping && diagram) {
+    tabs.push({
+      id: "recommendations",
+      label: "Recommendations",
+      content: (
+        <RecommendationsView
+          opportunityMapping={opportunityMapping}
+          diagram={diagram}
+          afterDiagram={afterDiagram}
+          departmentName={departmentName}
+        />
       ),
     });
   }
   if (pdfPath) {
     tabs.push({
       id: "pdf",
-      label: "PDF",
+      label: "Client PDF",
       content: (
         <iframe
           src={`/api/engagements/departments/${departmentId}/pdf`}
@@ -314,7 +345,8 @@ export function DepartmentWorkspace({
   }
 
   // No effect needed to keep activeTabId valid: tabs are only ever additive
-  // as the pipeline progresses (before -> opportunities -> after -> pdf),
+  // as the pipeline progresses (before -> opportunities -> after ->
+  // recommendations -> pdf),
   // never removed, and openPanel() always sets an id from the current tab
   // set, so a stale id here cannot actually happen.
 
@@ -463,8 +495,12 @@ export function DepartmentWorkspace({
       {bottlenecks && opportunityMapping && diagram ? (
         <ResultCard
           icon={Sparkles}
-          title="Bottlenecks & opportunities found"
-          detail={`${bottlenecks.length} bottleneck${bottlenecks.length === 1 ? "" : "s"}, ${opportunityMapping.solutions.length} grounded solution${opportunityMapping.solutions.length === 1 ? "" : "s"} · Workflow health ${computeWorkflowScore(bottlenecks.length).score}/100`}
+          title="What we found"
+          detail={(() => {
+            const { today } = readinessScores(buildStressViews(opportunityMapping.findings, afterDiagram));
+            const scale = today !== null ? ` · Scale readiness ${today}/100` : "";
+            return `${bottlenecks.length} bottleneck${bottlenecks.length === 1 ? "" : "s"}, ${opportunityMapping.solutions.length} grounded build${opportunityMapping.solutions.length === 1 ? "" : "s"} · Workflow health ${computeWorkflowScore(bottlenecks.length).score}/100${scale}`;
+          })()}
           onClick={() => openPanel("opportunities")}
         />
       ) : null}
@@ -473,8 +509,26 @@ export function DepartmentWorkspace({
         <ResultCard
           icon={ArrowRightLeft}
           title="Transformed workflow ready"
-          detail={`${afterDiagram.steps.length} step${afterDiagram.steps.length === 1 ? "" : "s"} once the solutions are applied`}
+          detail={
+            diagram && diagram.steps.length > afterDiagram.steps.length
+              ? `From ${diagram.steps.length} steps to ${afterDiagram.steps.length} once the solutions are applied`
+              : `${afterDiagram.steps.length} step${afterDiagram.steps.length === 1 ? "" : "s"} once the solutions are applied`
+          }
           onClick={() => openPanel("after")}
+        />
+      ) : null}
+
+      {opportunityMapping && opportunityMapping.solutions.length > 0 ? (
+        <ResultCard
+          icon={ListChecks}
+          title="Recommendations and 90 day roadmap"
+          detail={(["priority", "recommended", "nice-to-have"] as const)
+            .map((tier) => {
+              const count = opportunityMapping.solutions.filter((s) => s.tier === tier).length;
+              return `${count} ${tier === "nice-to-have" ? "nice to have" : tier}`;
+            })
+            .join(" · ")}
+          onClick={() => openPanel("recommendations")}
         />
       ) : null}
 
@@ -530,6 +584,8 @@ export function DepartmentWorkspace({
 
       <ResultPanel
         open={panelOpen && tabs.length > 0}
+        title={departmentName}
+        subtitle="Department results"
         onClose={() => setPanelOpen(false)}
         tabs={tabs}
         activeTabId={activeTabId}
